@@ -39,8 +39,10 @@ final class ShaderLibrary implements TouchControls.ShaderMenu {
         default void setParam(String name, float value) { }
         /** Shader Resolution in this menu (the GLES ports; DK64 / DinoTale have it in their settings). */
         default boolean hasResolution() { return false; }
-        /** 0 Original (240 lines), 1 2x, 2 the game's own setting; shaderOn: Original / 2x are to be used. */
+        /** 0 Original (240 lines), 1 2x (480), 2 Full: the picture the shader works on; shaderOn: a shader is in use. */
         default void setResolution(int mode, boolean shaderOn) { }
+        /** Switches the game's low resolution mode off (earlier builds switched it on for Shader resolution). */
+        default void undoLowResMode() { }
         /** The engine's own menu is open (the shader then works on the full picture). */
         default void setEngineMenuOpen(boolean open) { }
     }
@@ -106,10 +108,10 @@ final class ShaderLibrary implements TouchControls.ShaderMenu {
 
     // ---------------------------------------------------------------- the Shader category (the GLES ports' Back menu)
 
-    private static final String[] RESOLUTIONS = { "Original", "2x", "Game's setting" };
+    private static final String[] RESOLUTIONS = { "Original", "2x", "Full" };
     private boolean gameRunning, engineMenu;
 
-    /** 0 Original, 1 2x, 2 the game's own setting (the default: nothing is changed in the game). */
+    /** 0 Original (240 lines), 1 2x (480), 2 Full (the default: the picture as the game draws it). */
     static int resolution(Context c) { return Math.max(0, Math.min(2, prefs(c).getInt("resolution_choice", 2))); }
 
     /** Back > Shader: on / off, the selection, the resolution, the parameters and the import in one place. */
@@ -171,7 +173,7 @@ final class ShaderLibrary implements TouchControls.ShaderMenu {
             public String title() { return "Shader resolution"; }
             public List<SideMenu.Item> items() {
                 List<SideMenu.Item> l = new ArrayList<>();
-                final String[] notes = { "  (240 lines, as in RetroArch)", "  (480 lines)", "  (the game's own resolution)" };
+                final String[] notes = { "  (240 lines, as in RetroArch)", "  (480 lines)", "  (as the game draws it)" };
                 for (int i = 0; i < 3; i++) {
                     final int mode = i;
                     l.add(new SideMenu.Item((resolution(activity) == i ? "• " : "") + RESOLUTIONS[i] + notes[i]) {
@@ -188,20 +190,17 @@ final class ShaderLibrary implements TouchControls.ShaderMenu {
         applyResolution();
     }
 
-    /** Hands the resolution to the renderer while the game runs. Original / 2x with a shader on switch the game's
-     *  low resolution mode on; otherwise only what this menu switched on before is switched off again (prefs
-     *  "lowres_set"), so a choice made in the game's own menu stays. */
+    /** Hands the resolution to the renderer while the game runs: the picture the shader works on. The game's own
+     *  resolution (its menu's Internal Resolution) is never touched - builds 0.3.1 / 0.1.1 switched the game's low
+     *  resolution mode on for this, the first run switches it off once (prefs "lowres_undone"). */
     private void applyResolution() {
         if (!target.hasResolution() || !gameRunning) return;
-        boolean on = target.live() && !chosen(activity).isEmpty() && resolution(activity) < 2;
-        // (builds before this one switched it on without noting it: the first run switches it off once)
-        boolean wasSet = prefs(activity).getBoolean("lowres_set", true);
-        if (!on && !wasSet) {
-            try { target.setResolution(2, false); } catch (Throwable ignored) { }   // the shader gets the frame as it is
-            return;
+        if (!prefs(activity).getBoolean("lowres_undone", false)) {
+            try { target.undoLowResMode(); } catch (Throwable ignored) { }
+            prefs(activity).edit().putBoolean("lowres_undone", true).apply();
         }
+        boolean on = target.live() && !chosen(activity).isEmpty();
         try { target.setResolution(resolution(activity), on); } catch (Throwable ignored) { }
-        prefs(activity).edit().putBoolean("lowres_set", on).apply();
     }
 
     /** TouchControls' poll: the game started (the resolution goes to it) and the engine's menu state. */
