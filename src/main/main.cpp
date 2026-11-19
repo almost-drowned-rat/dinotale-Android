@@ -456,6 +456,20 @@ std::vector<recomp::GameEntry> supported_games = {
     std::abort();
 }
 
+// The folder for the player's own RetroArch shaders (Settings > Graphics > Shader > Custom = custom.slangp in it):
+// on Android the app's external folder (Android/data/<app>/files/shaders, reachable over USB), elsewhere next to
+// the game. Created on first use, so players find it.
+std::filesystem::path dinotale_user_shader_dir() {
+#ifdef __ANDROID__
+    std::filesystem::path dir = std::filesystem::path(androidport::external_files_dir()) / "shaders";
+#else
+    std::filesystem::path dir = std::filesystem::current_path() / "shaders";
+#endif
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    return dir;
+}
+
 // The UI loads assets/ relative to the working directory. When started from
 // somewhere else (a debugger, a shortcut), use the exe's own folder, which
 // the build fills with a copy of assets/.

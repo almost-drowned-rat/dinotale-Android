@@ -12,6 +12,10 @@
 #include "recompui/config.h"
 #include "ultramodern/config.hpp"
 #include "rt64_screen_filter.h"
+#ifdef DT_SHADER_PRESETS
+#include <filesystem>
+#include "rt64_shader_pass.h"
+#endif
 
 namespace {
     const std::string screen_filter_option = "screen_filter";
@@ -30,13 +34,58 @@ namespace {
         {RT64::ScreenFilter::HQ2x, "HQ2x", "HQ2x"},
     };
 
+#ifdef DT_SHADER_PRESETS
+    // Settings > Graphics > Shader: RetroArch slang presets through librashader (shaderpass/rt64). They replace the
+    // Screen Filter option (lib-patches/rt64/0017 stays applied, its filter stays at None). The shipped presets are
+    // in assets/shaders (LICENSES.txt); Custom is the player's own shaders/custom.slangp.
+    const std::string shader_option = "shader";
+    enum ShaderChoice : uint32_t { ShaderOff, ShaderCRT, ShaderScanlines, ShaderLCD, ShaderXBR, ShaderXBRZ, ShaderHQ2x, ShaderCustom };
+    const std::vector<recomp::config::ConfigOptionEnumOption> shader_options = {
+        {ShaderOff, "Off"},
+        {ShaderCRT, "CRT"},
+        {ShaderScanlines, "Scanlines"},
+        {ShaderLCD, "LCD"},
+        {ShaderXBR, "xBR", "xBR"},
+        {ShaderXBRZ, "xBRZ", "xBRZ"},
+        {ShaderHQ2x, "HQ2x", "HQ2x"},
+        {ShaderCustom, "Custom"},
+    };
+    const char* const shipped_presets[] = {
+        "",
+        "assets/shaders/crt/crt-easymode.slangp",
+        "assets/shaders/scanlines/scanline-fract.slangp",
+        "assets/shaders/handheld/lcd3x.slangp",
+        "assets/shaders/edge-smoothing/xbr/xbr-lv2.slangp",
+        "assets/shaders/edge-smoothing/xbrz/xbrz-freescale.slangp",
+        "assets/shaders/edge-smoothing/hqx/hq2x-halphon.slangp",
+    };
+#endif
+
     const std::vector<recomp::config::ConfigOptionEnumOption> texture_filter_options = {
         {0, "Smooth", "Smooth"},
         {1, "Sharp", "Sharp"},
     };
 }
 
+// The folder for the player's own shaders (main.cpp: next to the game on desktop, the app's external folder on Android).
+std::filesystem::path dinotale_user_shader_dir();
+
 void dinotale_add_display_options(recomp::config::Config &config) {
+#ifdef DT_SHADER_PRESETS
+    config.add_enum_option(
+        shader_option,
+        "Shader",
+        "A RetroArch shader for the final picture (librashader). "
+        "<recomp-color primary>CRT</recomp-color>: a CRT TV look (crt-easymode). "
+        "<recomp-color primary>Scanlines</recomp-color>: dark lines between the N64's lines. "
+        "<recomp-color primary>LCD</recomp-color>: a handheld LCD grid (lcd3x). "
+        "<recomp-color primary>xBR</recomp-color>, <recomp-color primary>xBRZ</recomp-color> and <recomp-color primary>HQ2x</recomp-color>: "
+        "pixel-art upscalers that smooth the edges of the game's 240p picture. "
+        "<recomp-color primary>Custom</recomp-color>: your own preset, <b>shaders/custom.slangp</b> (see the README).",
+        shader_options,
+        ShaderOff
+    );
+#else
     config.add_enum_option(
         screen_filter_option,
         "Screen Filter",
@@ -49,6 +98,8 @@ void dinotale_add_display_options(recomp::config::Config &config) {
         screen_filter_options,
         RT64::ScreenFilter::None
     );
+
+#endif
 
     config.add_enum_option(
         texture_filter_option,
@@ -80,10 +131,25 @@ void dinotale_add_display_options(recomp::config::Config &config) {
 // Called every VI: hands the applied settings to the renderer.
 void dinotale_update_display_options() {
     recomp::config::Config &config = recompui::config::get_config(recompui::config::graphics::id);
+#ifdef DT_SHADER_PRESETS
+    const auto shader = config.get_option_value(shader_option);
+    if (const uint32_t* value = std::get_if<uint32_t>(&shader)) {
+        std::filesystem::path preset;
+        if (*value == ShaderCustom) {
+            preset = dinotale_user_shader_dir() / "custom.slangp";
+        }
+        else if (*value < std::size(shipped_presets) && shipped_presets[*value][0] != '\0') {
+            std::error_code ec;
+            preset = std::filesystem::absolute(shipped_presets[*value], ec);
+        }
+        RT64::setShaderPreset(preset);
+    }
+#else
     const auto filter = config.get_option_value(screen_filter_option);
     if (const uint32_t* value = std::get_if<uint32_t>(&filter)) {
         RT64::setScreenFilter(RT64::ScreenFilter(*value));
     }
+#endif
 
     const auto texture_filter = config.get_option_value(texture_filter_option);
     if (const uint32_t* value = std::get_if<uint32_t>(&texture_filter)) {

@@ -86,3 +86,6 @@ dist/
 
 __pycache__/
 build-syms/
+
+# librashader for the Android build (tools/build_dinotale.sh copies it in; built from source, never committed)
+android/app/src/main/jniLibs/

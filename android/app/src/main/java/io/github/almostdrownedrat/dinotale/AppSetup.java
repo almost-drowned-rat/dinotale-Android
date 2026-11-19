@@ -29,7 +29,15 @@ final class AppSetup {
     private static final String TAG = "DinoTale";
 
     private static final String ASSETS_VERSION_MARKER = ".assets_version";
-    private static final String ASSETS_VERSION = "1";
+    // The installed APK's update time: every install / update copies the assets again (a fixed version string
+    // left new files - the shader presets - out of devices that had copied an older set).
+    private static String assetsVersion(Context ctx) {
+        try {
+            return "apk-" + ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0).lastUpdateTime;
+        } catch (Exception e) {
+            return "1";
+        }
+    }
 
     private AppSetup() {}
 
@@ -52,7 +60,7 @@ final class AppSetup {
         File marker = new File(ctx.getFilesDir(), ASSETS_VERSION_MARKER);
         if (!marker.exists()) return false;
         try {
-            return ASSETS_VERSION.equals(readTextFile(marker).trim());
+            return assetsVersion(ctx).equals(readTextFile(marker).trim());
         } catch (IOException e) {
             return false;
         }
@@ -68,7 +76,7 @@ final class AppSetup {
         try (InputStream in = ctx.getAssets().open("recompcontrollerdb.txt")) {
             copyStream(in, new File(filesDir, "recompcontrollerdb.txt"));
         }
-        writeTextFile(new File(filesDir, ASSETS_VERSION_MARKER), ASSETS_VERSION);
+        writeTextFile(new File(filesDir, ASSETS_VERSION_MARKER), assetsVersion(ctx));
         Log.i(TAG, "Assets copiados para " + filesDir);
     }
 

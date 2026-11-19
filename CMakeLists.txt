@@ -86,6 +86,12 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/lib/rt64 ${CMAKE_BINARY_DIR}/rt64)
 # RT64 (its present queue calls it, lib-patches/rt64/0025).
 target_sources(rt64 PRIVATE ${CMAKE_SOURCE_DIR}/lib/lsfg/rt64/rt64_frame_generation.cpp)
 target_include_directories(rt64 PUBLIC ${CMAKE_SOURCE_DIR}/lib/lsfg/rt64)
+
+# RetroArch shader presets (shaderpass/rt64, lib-patches/rt64/0026), drawn by librashader; librashader is loaded
+# at run time from next to the game (librashader.so / librashader.dll), without it the Shader setting does nothing.
+target_sources(rt64 PRIVATE ${CMAKE_SOURCE_DIR}/shaderpass/rt64/rt64_shader_pass.cpp)
+target_include_directories(rt64 PUBLIC ${CMAKE_SOURCE_DIR}/shaderpass/rt64 ${CMAKE_SOURCE_DIR}/thirdparty/librashader/include)
+add_compile_definitions(DT_SHADER_PRESETS)
 if (NOT APPLE)
     set(LSFG_VULKAN_TARGET plume)
     set(LSFG_SPIRV_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/lib/rt64/src/contrib/re-spirv/external/SPIRV-Headers/include)
@@ -192,6 +198,7 @@ endif()
 
 target_include_directories(DinoTale PRIVATE
     ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/shaderpass/rt64
     ${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime/N64Recomp/include
     ${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime/thirdparty/sse2neon
     ${CMAKE_SOURCE_DIR}/lib/rt64/src/contrib
@@ -379,6 +386,7 @@ set(RECOMP_FRONTEND_RT64_PATH ${CMAKE_SOURCE_DIR}/lib/rt64)
 add_subdirectory(${CMAKE_SOURCE_DIR}/lib/RecompFrontend)
 # recompui includes RT64's headers by folder rather than linking it: the frame generation header too.
 target_include_directories(recompui PRIVATE ${CMAKE_SOURCE_DIR}/lib/lsfg/rt64)
+target_include_directories(recompui PRIVATE ${CMAKE_SOURCE_DIR}/shaderpass/rt64)
 
 # Upstream RmlUi 6.0 uses uint32_t and friends without including <cstdint>, which clang with a
 # current libstdc++ rejects, and recompui includes those headers. Add the include from here

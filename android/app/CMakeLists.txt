@@ -269,6 +269,11 @@ add_subdirectory("${FRONTEND_DIR}" "${CMAKE_BINARY_DIR}/RecompFrontend")
 target_sources(rt64 PRIVATE "${ANDROID_PORT_DIR}/native/compat/rt64_frame_generation_stub.cpp")
 target_include_directories(rt64 PUBLIC "${REPO_ROOT}/lib/lsfg/rt64")
 target_include_directories(recompui PRIVATE "${REPO_ROOT}/lib/lsfg/rt64")
+# RetroArch shader presets (shaderpass/rt64, lib-patches/rt64/0026): librashader is loaded at run time
+# (liblibrashader_capi.so in the APK, put into src/main/jniLibs by tools/build_dinotale.sh).
+target_sources(rt64 PRIVATE "${REPO_ROOT}/shaderpass/rt64/rt64_shader_pass.cpp")
+target_include_directories(rt64 PUBLIC "${REPO_ROOT}/shaderpass/rt64" "${REPO_ROOT}/thirdparty/librashader/include")
+target_include_directories(recompui PRIVATE "${REPO_ROOT}/shaderpass/rt64")
 # RmlUi / recompui need <cstdint> (as in the desktop CMakeLists.txt)
 foreach(_dt_rml_target rmlui_core rmlui_debugger recompui)
     if(TARGET ${_dt_rml_target})
@@ -370,7 +375,7 @@ add_library(lzma_sdk_7z STATIC
 target_compile_definitions(lzma_sdk_7z PRIVATE Z7_PPMD_SUPPORT Z7_EXTRACT_ONLY)
 target_include_directories(lzma_sdk_7z PUBLIC ${LZMA_SDK_DIR})
 target_sources(main PRIVATE ${MAIN_SOURCES} "${ICON_GEN_DIR}/icon_bytes.c")
-target_compile_definitions(main PRIVATE DT_HAS_RECOMPILED_FUNCS DT_HAS_RSP_AUDIO DT_HAS_APP_ICON)
+target_compile_definitions(main PRIVATE DT_HAS_RECOMPILED_FUNCS DT_HAS_RSP_AUDIO DT_HAS_APP_ICON DT_SHADER_PRESETS)
 
 target_include_directories(main PRIVATE
     "${REPO_ROOT}/include"
@@ -392,6 +397,7 @@ target_include_directories(main PRIVATE
     "${RT64_DIR}/src/contrib/nativefiledialog-extended/src/include"
     "${FRONTEND_DIR}/lib/SlotMap"
     "${ANDROID_PORT_DIR}/native/compat"
+    "${REPO_ROOT}/shaderpass/rt64"
     "${CMAKE_CURRENT_BINARY_DIR}"
     "${ICON_GEN_DIR}"
 )

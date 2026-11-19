@@ -1,0 +1,18 @@
+RetroArch slang shaders shipped with DinoTale (Settings > Graphics > Shader)
+
+Taken from libretro/slang-shaders, commit 9230b1f24a6d0f28febe61711c0b255c4926b231
+(https://github.com/libretro/slang-shaders), each with its own licence (also in the file's header):
+
+crt/crt-easymode                 CRT Shader by EasyMode - GPL
+scanlines/scanline-fract         by hunterk - public domain
+handheld/lcd3x                   by Gigaherz - public domain
+edge-smoothing/xbr               Hyllian's xBR-lv2 (xbr-lv2-standalone.slang) - MIT, Copyright (C) 2011-2022 Hyllian
+edge-smoothing/xbrz              xBRZ freescale - MIT (Hyllian's xBR vertex code, Copyright (C) 2011/2016 Hyllian)
+                                 and concepts from xBRZ, GPL-3.0, Copyright (C) Zenju
+edge-smoothing/hqx               HQ2x by Lior Halphon, ported to slang by hunterk - MIT, Copyright (c) 2015-2016 Lior Halphon
+
+Written for DinoTale (GPL-3.0-or-later): stock.slang (a pass-through pass) and edge-smoothing/xbr/xbr-lv2.slangp
+(a one-pass preset for the standalone xBR-lv2 shader). The other .slangp files are libretro's presets as they are.
+
+More presets: put any RetroArch slang preset (with the files it needs) into the "shaders" folder and select it as
+"Custom" - see README.md.

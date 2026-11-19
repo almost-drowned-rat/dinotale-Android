@@ -1,0 +1,72 @@
+diff --git a/src/hle/rt64_present_queue.cpp b/src/hle/rt64_present_queue.cpp
+index 7b76edc..52823d4 100644
+--- a/src/hle/rt64_present_queue.cpp
++++ b/src/hle/rt64_present_queue.cpp
+@@ -323,9 +323,18 @@ namespace RT64 {
+                 // Draw the framebuffer with the VI renderer.
+                 RenderTexture *swapChainTexture = ext.swapChain->getTexture(swapChainIndex);
+                 RenderFramebuffer *swapChainFramebuffer = swapChainFramebuffers[swapChainIndex].get();
++                // A RetroArch shader preset (shaderpass/rt64): the VI renderer draws into the pass's source image,
++                // and the preset's filter chain draws that into the swap chain image. A new preset's chain is built
++                // here, in its own submission on the present worker, before this frame's commands.
++                const bool vulkanApi = (ext.createdGraphicsAPI == UserConfiguration::GraphicsAPI::Vulkan);
++                const bool useShader = (colorTarget != nullptr) && shaderPass.prepare(ext.device, ext.swapChain, ext.presentGraphicsWorker, vulkanApi);
++
+                 RenderCommandList *commandList = ext.presentGraphicsWorker->commandList.get();
+                 commandList->begin();
+                 commandList->barriers(RenderBarrierStage::GRAPHICS, RenderTextureBarrier(swapChainTexture, RenderTextureLayout::COLOR_WRITE));
++                if (useShader) {
++                    commandList->barriers(RenderBarrierStage::GRAPHICS, RenderTextureBarrier(shaderPass.sourceTexture(), RenderTextureLayout::COLOR_WRITE));
++                }
+                 
+                 VIRenderer::RenderParams renderParams;
+                 if (colorTarget != nullptr) {
+@@ -358,7 +367,7 @@ namespace RT64 {
+                     }
+                 }
+                 
+-                commandList->setFramebuffer(swapChainFramebuffer);
++                commandList->setFramebuffer(useShader ? shaderPass.sourceFramebuffer() : swapChainFramebuffer);
+                 commandList->clearColor();
+ 
+                 if (renderParams.texture != nullptr) {
+@@ -366,6 +375,12 @@ namespace RT64 {
+                     viRenderer->render(renderParams);
+                 }
+ 
++                if (useShader) {
++                    commandList->barriers(RenderBarrierStage::GRAPHICS, RenderTextureBarrier(shaderPass.sourceTexture(), RenderTextureLayout::SHADER_READ));
++                    shaderPass.record(commandList, swapChainTexture);
++                    commandList->setFramebuffer(swapChainFramebuffer);
++                }
++
+                 RenderHookDraw *drawHook = GetRenderHookDraw();
+                 if (drawHook != nullptr) {
+                     drawHook(commandList, swapChainFramebuffer);
+@@ -726,5 +741,6 @@ namespace RT64 {
+ 
+         // The present worker is idle here: the frame generator can go.
+         frameGeneration.release();
++        shaderPass.release();
+     }
+ };
+diff --git a/src/hle/rt64_present_queue.h b/src/hle/rt64_present_queue.h
+index 0843f22..1792931 100644
+--- a/src/hle/rt64_present_queue.h
++++ b/src/hle/rt64_present_queue.h
+@@ -12,6 +12,7 @@
+ #include "rt64_present.h"
+ #include "rt64_shared_queue_resources.h"
+ #include "rt64_frame_generation.h"
++#include "rt64_shader_pass.h"
+ 
+ #define PRESENT_QUEUE_SIZE 4
+ 
+@@ -59,6 +60,7 @@ namespace RT64 {
+         VIHistory viHistory;
+         bool presentWaitEnabled = false;
+         FrameGeneration frameGeneration;
++        ShaderPass shaderPass;
+         uint64_t frameGenerationPresentId = 0;
+ 
+         PresentQueue();

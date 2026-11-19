@@ -1,0 +1,7 @@
+# DinoTale: Hyllian's xBR-lv2 in one pass (shaders/xbr-lv2-standalone.slang, MIT, from libretro/slang-shaders).
+shaders = 1
+
+shader0 = shaders/xbr-lv2-standalone.slang
+filter_linear0 = false
+scale_type0 = source
+scale0 = 4.0

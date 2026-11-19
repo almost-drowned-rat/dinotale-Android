@@ -15,7 +15,9 @@ included:** you need your own copy of the game.
 - **Widescreen:** play in 4:3, stretched, or true widescreen (Expand) that
   shows more of each level, up to 16:9.
 - HUD at the edges of the window in widescreen, or kept in its original place.
-- Screen filters: CRT, scanlines, LCD, and the xBR, xBRZ and HQ2x upscalers.
+- RetroArch shaders (librashader): CRT, scanlines, LCD, the xBR, xBRZ and HQ2x upscalers, or any slang preset of
+  your own.
+- **Android** (this fork's `android` branch): touch buttons, full screen, Android's file picker for the ROM.
 - Keyboard and controller support with remappable controls.
 - Saves and sound.
 
@@ -72,6 +74,44 @@ it runs on the Vulkan graphics API, which it switches to. Multiplier sets 2x,
 3x or 4x the game's frame rate; Performance mode is lighter on the GPU. It
 adds about one game frame of input delay. Windows and Linux.
 
+### Shaders
+
+Settings > Graphics > Shader runs a RetroArch slang shader over the final picture, through
+[librashader](https://github.com/SnowflakePowered/librashader) (Vulkan graphics API). **CRT**, **Scanlines**,
+**LCD**, **xBR**, **xBRZ** and **HQ2x** come with the game (`assets/shaders`, licences in
+`assets/shaders/LICENSES.txt`). **Custom** runs your own preset, `shaders/custom.slangp`: put a shader pack (for
+example [libretro's slang-shaders](https://github.com/libretro/slang-shaders)) into the `shaders` folder and make
+`custom.slangp` point at the preset you want, e.g. a file with the one line
+
+```
+#reference "slang-shaders/crt/crt-royale.slangp"
+```
+
+The `shaders` folder is next to the game, on Android in `Android/data/io.github.almostdrownedrat.dinotale/files/`
+(reachable over USB). The desktop builds need `librashader.so` / `librashader.dll` next to the game; without it the
+Shader setting does nothing. They replace the earlier Screen Filter setting.
+
+## Android
+
+The `android` branch of this fork builds an APK for arm64 Android devices with Vulkan (Android 8+), made for
+handhelds like the AYN Odin 2 Portal and phones alike. The Android layer comes from the
+[DK64: Recompiled Android port](https://github.com/deivid22srk/dk64-recomp-android) by deivid22srk.
+
+- **Load ROM** opens Android's file picker; the app restarts once to finish setting up.
+- **Touch buttons** (N64 layout: stick, A, B, Z, L, R, START, C buttons; D-pad hidden by default). The controller
+  icon at the top centre opens their settings: Touch buttons Automatic / Always / Off (Automatic hides them while a
+  controller is used and a touch brings them back), move and resize, button size, show / hide single buttons,
+  opacity, stick sensitivity, reset. Touches off the buttons work as a mouse in the menus.
+- Android's **Back** opens the game's menu.
+- Lossless Scaling frame generation isn't available on Android (it needs the Windows `Lossless.dll`).
+
+Build: see `android/` and the steps in BUILDING.md (codegen on a Linux host first, then Gradle with NDK 27).
+
+### AI assistance
+
+The Android port and the shader support were made with AI assistance ([Claude Code](https://claude.com/claude-code)).
+Planning, testing on the device and the decision what gets released are by the fork's owner.
+
 ## Reporting issues
 
 Found something wrong? Open an
@@ -96,6 +136,10 @@ log.
   this project builds on
 - [splat](https://github.com/ethteck/splat), `spimdisasm` and `rabbitizer`,
   used to find the game's functions
+- [deivid22srk/dk64-recomp-android](https://github.com/deivid22srk/dk64-recomp-android), the Android layer
+- [librashader](https://github.com/SnowflakePowered/librashader) by SnowflakePowered (MPL-2.0 / GPL-3.0), the
+  shader runtime, and the shipped presets from [libretro/slang-shaders](https://github.com/libretro/slang-shaders)
+  (authors and licences in `assets/shaders/LICENSES.txt`)
 
 ## License
 
