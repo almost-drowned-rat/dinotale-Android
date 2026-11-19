@@ -106,25 +106,20 @@ VP_JNI jstring JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_nati
 }
 
 
-// What Settings > Android Options shows beside its buttons: the preset in use and the parameters set for it
-// (the player's saved values are set again on every start, so "set" means "changed").
+// What Settings > Android Options shows beside its buttons: the preset in use and how many of its parameters
+// differ from the preset's values.
 #include <mutex>
-#include <set>
+#include <vector>
+#include <cstdlib>
 namespace {
 std::mutex shader_info_mutex;
 std::string shader_info_path;
-std::set<std::string> shader_info_params;
 void shader_info_set_path(const char* p) {
     std::scoped_lock lock(shader_info_mutex);
     std::string path = p != nullptr ? p : "";
     if (path != shader_info_path) {
         shader_info_path = path;
-        shader_info_params.clear();
     }
-}
-void shader_info_set_param(const char* name) {
-    std::scoped_lock lock(shader_info_mutex);
-    shader_info_params.insert(name);
 }
 }
 
@@ -141,21 +136,41 @@ std::string android_shader_name() {
 }
 
 std::string android_shader_params_summary() {
-    std::scoped_lock lock(shader_info_mutex);
-    if (shader_info_path.empty()) {
-        return "-";
+    {
+        std::scoped_lock lock(shader_info_mutex);
+        if (shader_info_path.empty()) {
+            return "-";
+        }
     }
-    if (shader_info_params.empty()) {
-        return "Default";
+    // one line per parameter: name, description, value, min, max, step, initial
+    const std::string text = dinotale_shader_params();
+    int changed = 0, total = 0;
+    size_t start = 0;
+    while (start < text.size()) {
+        size_t end = text.find('\n', start);
+        if (end == std::string::npos) end = text.size();
+        std::vector<std::string> f;
+        size_t i = start;
+        while (i <= end) {
+            size_t tab = text.find('\t', i);
+            if (tab == std::string::npos || tab > end) tab = end;
+            f.push_back(text.substr(i, tab - i));
+            i = tab + 1;
+        }
+        if (f.size() >= 7) {
+            total++;
+            if (std::fabs(std::strtof(f[2].c_str(), nullptr) - std::strtof(f[6].c_str(), nullptr)) > 1e-6f) changed++;
+        }
+        start = end + 1;
     }
-    return std::to_string(shader_info_params.size()) + " changed";
+    if (total == 0) return "-";
+    return changed == 0 ? std::string("Default") : std::to_string(changed) + " changed";
 }
 
 VP_JNI void JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_nativeShaderSetParam(JNIEnv* env, jclass, jstring name,
                                                                                          jfloat value) {
     const char* n = env->GetStringUTFChars(name, nullptr);
     dinotale_shader_set_param(n, value);
-    shader_info_set_param(n);
     env->ReleaseStringUTFChars(name, n);
 }
 

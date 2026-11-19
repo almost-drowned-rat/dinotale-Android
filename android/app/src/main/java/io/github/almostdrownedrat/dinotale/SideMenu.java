@@ -32,6 +32,8 @@ final class SideMenu extends FrameLayout {
         void step(int dir) { run(); }
         void run() { }
         boolean isValue() { return value() != null; }
+        /** Y: back to the default value; false if the item has none. */
+        boolean reset() { return false; }
     }
 
     interface Page { String title(); List<Item> items(); }
@@ -47,7 +49,17 @@ final class SideMenu extends FrameLayout {
     private final List<TextView> rows = new ArrayList<>();
     private int sel;
     private boolean open;
-    private long lastAxisMove;
+    // Held hat / stick: one step at once, then again after HOLD_DELAY and every HOLD_REPEAT while held (the hat
+    // reports one motion event per change, so Android repeats nothing itself).
+    private static final long HOLD_DELAY = 350, HOLD_REPEAT = 70, HOLD_REPEAT_VALUE = 120;
+    private int holdDir;   // 0 none, -1 / +1 up / down, -2 / +2 left / right
+    private final Runnable holdRepeat = new Runnable() {
+        @Override public void run() {
+            if (holdDir == 0 || !open) { holdDir = 0; return; }
+            step(holdDir);
+            postDelayed(this, Math.abs(holdDir) == 1 ? HOLD_REPEAT : HOLD_REPEAT_VALUE);
+        }
+    };
     private Runnable onClosed;
 
     SideMenu(Context ctx) {
@@ -112,6 +124,8 @@ final class SideMenu extends FrameLayout {
     }
 
     void close() {
+        removeCallbacks(holdRepeat);
+        holdDir = 0;
         if (!open) return;
         open = false;
         panel.animate().translationX(-panel.getWidth()).setDuration(ANIM_MS).setInterpolator(new DecelerateInterpolator())
@@ -196,6 +210,9 @@ final class SideMenu extends FrameLayout {
                 activate(+1); break;
             case KeyEvent.KEYCODE_BUTTON_B: case KeyEvent.KEYCODE_ESCAPE:
                 back(); break;
+            case KeyEvent.KEYCODE_BUTTON_Y:   // the selected value back to its default
+                if (cur() != null && cur().reset() && open) paint();
+                break;
             case KeyEvent.KEYCODE_BACK:   // Android's Back: the whole menu (TouchControls.onBack handles it first)
                 close(); break;
             case KeyEvent.KEYCODE_BUTTON_START: case KeyEvent.KEYCODE_BUTTON_SELECT:
@@ -209,13 +226,21 @@ final class SideMenu extends FrameLayout {
     boolean onMotion(MotionEvent e) {
         float y = e.getAxisValue(MotionEvent.AXIS_HAT_Y), x = e.getAxisValue(MotionEvent.AXIS_HAT_X);
         if (Math.abs(y) < 0.5f && Math.abs(x) < 0.5f) { y = e.getAxisValue(MotionEvent.AXIS_Y); x = e.getAxisValue(MotionEvent.AXIS_X); }
-        long now = e.getEventTime();
-        if (Math.abs(y) < 0.6f && Math.abs(x) < 0.6f) { lastAxisMove = 0; return true; }
-        if (now - lastAxisMove < 220) return true;
-        lastAxisMove = now;
-        if (Math.abs(y) >= Math.abs(x)) move(y > 0 ? +1 : -1);
-        else if (cur() != null && cur().isValue()) activate(x > 0 ? +1 : -1);
+        int dir = 0;
+        if (Math.abs(y) >= 0.6f || Math.abs(x) >= 0.6f) dir = Math.abs(y) >= Math.abs(x) ? (y > 0 ? 1 : -1) : (x > 0 ? 2 : -2);
+        if (dir == holdDir) return true;
+        removeCallbacks(holdRepeat);
+        holdDir = dir;
+        if (dir != 0) {
+            step(dir);
+            postDelayed(holdRepeat, HOLD_DELAY);
+        }
         return true;
+    }
+
+    private void step(int dir) {
+        if (Math.abs(dir) == 1) move(dir);
+        else if (cur() != null && cur().isValue()) activate(dir > 0 ? +1 : -1);
     }
 
     private Item cur() { return sel >= 0 && sel < items.size() ? items.get(sel) : null; }

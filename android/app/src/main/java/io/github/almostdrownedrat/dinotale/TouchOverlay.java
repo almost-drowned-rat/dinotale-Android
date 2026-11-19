@@ -30,7 +30,7 @@ public class TouchOverlay extends View {
     /** Where the state goes: buttons = one bit per control above, the stick in -1..1 (y down = +). */
     public interface Sink { void send(int buttons, float x, float y); }
 
-    private static boolean hiddenByDefault(int i) { return i >= DU && i <= DR; }
+    static boolean hiddenByDefault(int i) { return i >= DU && i <= DR; }
     private static boolean centred(int i) { return i == START; }               // x 0 = the screen's centre
     private static boolean wide(int i) { return i == Z || i == L || i == R || i == START; }
     /** N64 colours: A blue, B green, C yellow, START red, the rest grey */

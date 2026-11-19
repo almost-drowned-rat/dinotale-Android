@@ -3,7 +3,6 @@
 // (<external files>/shaders), and any .slangp in it can then be chosen by browsing its folders. The choice is kept
 // in SharedPreferences "shader". Where the shader is drawn is the port's (Target): the GLES ports' presenter
 // (ShaderHost; from "Off" to a shader only at the next start), or a renderer of its own (DinoTale's RT64).
-// SPDX-License-Identifier: GPL-3.0-or-later
 package io.github.almostdrownedrat.dinotale;
 
 import android.app.Activity;
@@ -173,7 +172,7 @@ final class ShaderLibrary implements TouchControls.ShaderMenu {
 
     private static final class Param {
         String name, description;
-        float value, min, max, step;
+        float value, min, max, step, initial;
     }
 
     private List<Param> readParams() {
@@ -192,6 +191,7 @@ final class ShaderLibrary implements TouchControls.ShaderMenu {
                 p.min = Float.parseFloat(f[3]);
                 p.max = Float.parseFloat(f[4]);
                 p.step = Float.parseFloat(f[5]);
+                p.initial = f.length >= 7 ? Float.parseFloat(f[6]) : Float.NaN;
                 l.add(p);
             } catch (NumberFormatException ignored) { }
         }
@@ -226,6 +226,13 @@ final class ShaderLibrary implements TouchControls.ShaderMenu {
                                 v = Math.max(p.min, Math.min(p.max, Math.round((v + d * s) / s) * s));
                                 prefs(activity).edit().putFloat(PARAM + preset + "|" + p.name, v).apply();
                                 try { target.setParam(p.name, v); } catch (Throwable ignored) { }
+                            }
+                            @Override boolean reset() {   // Y: the preset's value
+                                if (Float.isNaN(p.initial)) return false;
+                                v = p.initial;
+                                prefs(activity).edit().remove(PARAM + preset + "|" + p.name).apply();
+                                try { target.setParam(p.name, v); } catch (Throwable ignored) { }
+                                return true;
                             }
                         });
                     }

@@ -185,7 +185,7 @@ namespace RT64 {
         for (const Param &p : presetParams) {
             auto it = paramOverrides.find(p.name);
             float v = it != paramOverrides.end() ? it->second : p.initial;
-            snprintf(num, sizeof num, "\t%g\t%g\t%g\t%g\n", v, p.minimum, p.maximum, p.step);
+            snprintf(num, sizeof num, "\t%g\t%g\t%g\t%g\t%g\n", v, p.minimum, p.maximum, p.step, p.initial);
             out += p.name + "\t" + p.description + num;
         }
         return out;

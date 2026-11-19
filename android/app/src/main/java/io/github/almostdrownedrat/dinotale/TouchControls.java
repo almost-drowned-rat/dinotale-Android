@@ -368,6 +368,7 @@ public final class TouchControls {
                             fpsOn = !fpsOn;
                             activity.getSharedPreferences("touch", Context.MODE_PRIVATE).edit().putBoolean("fps", fpsOn).apply();
                         }
+                        @Override boolean reset() { if (fpsOn) step(1); return true; }
                     });
                 }
                 l.add(new SideMenu.Item("Touch controls  ›") { @Override void run() { menu.push(touchPage()); } });
@@ -397,6 +398,7 @@ public final class TouchControls {
                 l.add(new SideMenu.Item("Touch buttons") {     // Automatic = hidden while a controller is used
                     @Override String value() { return modes[overlay.getMode()]; }
                     @Override void step(int d) { overlay.setMode((overlay.getMode() + d + 3) % 3); }
+                    @Override boolean reset() { overlay.setMode(TouchOverlay.MODE_AUTO); return true; }
                 });
                 l.add(new SideMenu.Item("Move and resize buttons") {
                     @Override void run() { menu.close(); overlay.setEditing(true); setTouchable(true); updateIcon(); }
@@ -404,15 +406,18 @@ public final class TouchControls {
                 l.add(new SideMenu.Item("Button size") {       // all buttons, 50-150 %
                     @Override String value() { return pct(overlay.getScale()); }
                     @Override void step(int d) { overlay.setScale(Math.max(0.5f, Math.min(1.5f, overlay.getScale() + 0.25f * d))); }
+                    @Override boolean reset() { overlay.setScale(1f); return true; }
                 });
                 l.add(new SideMenu.Item("Show / hide single buttons") { @Override void run() { menu.push(hidePage()); } });
                 l.add(new SideMenu.Item("Opacity") {           // 25-100 %
                     @Override String value() { return overlay.getOpacity() + " %"; }
                     @Override void step(int d) { overlay.setOpacity(Math.max(25, Math.min(100, overlay.getOpacity() + 25 * d))); }
+                    @Override boolean reset() { overlay.setOpacity(50); return true; }
                 });
                 l.add(new SideMenu.Item("Stick sensitivity") {
                     @Override String value() { return pct(overlay.getSensitivity()); }
                     @Override void step(int d) { overlay.setSensitivity(Math.max(1f, Math.min(3f, overlay.getSensitivity() + 0.5f * d))); }
+                    @Override boolean reset() { overlay.setSensitivity(1f); return true; }
                 });
                 l.add(new SideMenu.Item("Reset touch layout") { @Override void run() { overlay.resetLayout(); menu.refresh(); } });
                 return l;
@@ -430,6 +435,7 @@ public final class TouchControls {
                     l.add(new SideMenu.Item(TouchOverlay.NAMES[b]) {
                         @Override String value() { return overlay.isHidden(b) ? "hidden" : "shown"; }
                         @Override void step(int d) { overlay.setHidden(b, !overlay.isHidden(b)); }
+                        @Override boolean reset() { overlay.setHidden(b, TouchOverlay.hiddenByDefault(b)); return true; }
                     });
                 }
                 return l;
