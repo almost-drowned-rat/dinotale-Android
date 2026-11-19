@@ -35,6 +35,9 @@ final class ShaderLibrary implements TouchControls.ShaderMenu {
         void use(String path);
         /** True while the renderer builds (compiles) the chosen preset. */
         default boolean compiling() { return false; }
+        /** The preset's parameters, one per line: name, description, value, min, max, step (tabs); "" if none. */
+        default String params() { return ""; }
+        default void setParam(String name, float value) { }
     }
 
     static final int PICK_ZIP = 0x5ad;
@@ -146,11 +149,103 @@ final class ShaderLibrary implements TouchControls.ShaderMenu {
     private void choose(String path) {
         prefs(activity).edit().putString("preset", path).apply();
         if (target.live()) {
-            try { target.use(path); } catch (Throwable t) { Log.w(TAG, "shader: " + t); }
+            try { target.use(path); applySaved(activity, target, path); } catch (Throwable t) { Log.w(TAG, "shader: " + t); }
         } else if (!path.isEmpty()) {
             toast("The shader is used from the next start of the game");
         }
         touch.refreshPage();
+    }
+
+    // ---------------------------------------------------------------- parameters
+
+    private static final String PARAM = "param|";
+
+    /** The player's saved parameter values of a preset, handed to the renderer (after use(path)). */
+    static void applySaved(Context c, Target t, String preset) {
+        if (preset.isEmpty()) return;
+        String prefix = PARAM + preset + "|";
+        for (java.util.Map.Entry<String, ?> e : prefs(c).getAll().entrySet()) {
+            if (e.getKey().startsWith(prefix) && e.getValue() instanceof Float) {
+                try { t.setParam(e.getKey().substring(prefix.length()), (Float) e.getValue()); } catch (Throwable ignored) { }
+            }
+        }
+    }
+
+    private static final class Param {
+        String name, description;
+        float value, min, max, step;
+    }
+
+    private List<Param> readParams() {
+        List<Param> l = new ArrayList<>();
+        String text = "";
+        try { text = target.params(); } catch (Throwable ignored) { }
+        if (text == null) return l;
+        for (String line : text.split("\n")) {
+            String[] f = line.split("\t");
+            if (f.length < 6) continue;
+            try {
+                Param p = new Param();
+                p.name = f[0];
+                p.description = f[1].isEmpty() ? f[0] : f[1];
+                p.value = Float.parseFloat(f[2]);
+                p.min = Float.parseFloat(f[3]);
+                p.max = Float.parseFloat(f[4]);
+                p.step = Float.parseFloat(f[5]);
+                l.add(p);
+            } catch (NumberFormatException ignored) { }
+        }
+        return l;
+    }
+
+    private static String format(float v, float step) {
+        if (step >= 1f && v == Math.rint(v)) return String.valueOf((int) v);
+        int digits = step >= 0.1f ? 1 : step >= 0.01f ? 2 : 3;
+        return String.format(java.util.Locale.ROOT, "%." + digits + "f", v);
+    }
+
+    @Override public SideMenu.Page paramsPage() {
+        return new SideMenu.Page() {
+            public String title() { return "Shader parameters"; }
+            public List<SideMenu.Item> items() {
+                List<SideMenu.Item> l = new ArrayList<>();
+                final String preset = chosen(activity);
+                final List<Param> params = readParams();
+                if (preset.isEmpty()) {
+                    l.add(new SideMenu.Item("No shader chosen") { });
+                } else if (params.isEmpty()) {
+                    l.add(new SideMenu.Item(target.live() ? "This shader has no parameters (or is still being compiled)"
+                                                          : "Available once the shader is in use (next start)") { });
+                } else {
+                    for (final Param p : params) {
+                        l.add(new SideMenu.Item(p.description) {     // left / right: one step; A: one step up
+                            float v = p.value;
+                            @Override String value() { return format(v, p.step); }
+                            @Override void step(int d) {
+                                float s = p.step > 0 ? p.step : (p.max - p.min) / 20f;
+                                v = Math.max(p.min, Math.min(p.max, Math.round((v + d * s) / s) * s));
+                                prefs(activity).edit().putFloat(PARAM + preset + "|" + p.name, v).apply();
+                                try { target.setParam(p.name, v); } catch (Throwable ignored) { }
+                            }
+                        });
+                    }
+                    l.add(new SideMenu.Item("Reset to defaults") {
+                        @Override void run() {
+                            SharedPreferences.Editor ed = prefs(activity).edit();
+                            String prefix = PARAM + preset + "|";
+                            for (String k : prefs(activity).getAll().keySet()) if (k.startsWith(prefix)) ed.remove(k);
+                            ed.apply();
+                            // the initial values: what the renderer reports without the player's ones is unknown
+                            // here, so the shader is built again from its preset
+                            try { target.use(""); target.use(preset); } catch (Throwable ignored) { }
+                            toast("Default values restored");
+                            touch.refreshPage();
+                        }
+                    });
+                }
+                return l;
+            }
+        };
     }
 
     // ---------------------------------------------------------------- importing a pack

@@ -15,4 +15,7 @@ final class TouchNative {
     static native void nativeShaderSetPath(String path);
     /** RT64 is building (compiling) the preset's filter chain right now. */
     static native boolean nativeShaderCompiling();
+    /** The preset's parameters (name, description, value, min, max, step per line, tabs); setting one. */
+    static native String nativeShaderParams();
+    static native void nativeShaderSetParam(String name, float value);
 }

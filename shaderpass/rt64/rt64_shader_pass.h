@@ -20,6 +20,11 @@ namespace RT64 {
     // A line for the settings: why there is no shader ("librashader wasn't found", the preset's error), or empty.
     std::string getShaderStatus();
 
+    // The parameters of the preset in use, one per line: name, description, value, min, max, step (tab separated);
+    // and setting one (kept for this preset, applied from the next frame). Any thread.
+    std::string getShaderParams();
+    void setShaderParam(const std::string &name, float value);
+
     // True while a preset's filter chain is being built (Android: the progress dialog). Any thread.
     bool shaderCompiling();
 

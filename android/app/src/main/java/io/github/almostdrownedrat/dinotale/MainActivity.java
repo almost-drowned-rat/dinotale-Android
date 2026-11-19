@@ -191,10 +191,16 @@ public class MainActivity extends SDLActivity {
                 @Override public boolean live() { return true; }
                 @Override public void use(String path) { TouchNative.nativeShaderSetPath(path); }
                 @Override public boolean compiling() { return TouchNative.nativeShaderCompiling(); }
+                @Override public String params() { return TouchNative.nativeShaderParams(); }
+                @Override public void setParam(String name, float value) { TouchNative.nativeShaderSetParam(name, value); }
             };
             shaderLibrary = new ShaderLibrary(this, touch, rt64);
             touch.setShaderMenu(shaderLibrary);
-            try { rt64.use(ShaderLibrary.chosen(this)); } catch (UnsatisfiedLinkError ignored) { }
+            try {
+                String chosen = ShaderLibrary.chosen(this);
+                rt64.use(chosen);
+                ShaderLibrary.applySaved(this, rt64, chosen);
+            } catch (UnsatisfiedLinkError ignored) { }
         }
 
         // SurfaceHolder.Callback para o ciclo de vida da Surface nativa.

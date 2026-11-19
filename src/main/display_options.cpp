@@ -137,6 +137,8 @@ void dinotale_shader_set_path(const char* path) {
     RT64::setShaderPreset(path != nullptr ? std::filesystem::path(path) : std::filesystem::path());
 }
 bool dinotale_shader_compiling() { return RT64::shaderCompiling(); }
+std::string dinotale_shader_params() { return RT64::getShaderParams(); }
+void dinotale_shader_set_param(const char* name, float value) { RT64::setShaderParam(name, value); }
 #endif
 
 // Called every VI: hands the applied settings to the renderer.

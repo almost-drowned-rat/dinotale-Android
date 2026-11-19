@@ -1,5 +1,8 @@
 // RetroArch slang shader presets for RT64's present, see rt64_shader_pass.h.
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include <string>
+#include <vector>
+#include <map>
 #include <atomic>
 #include "rt64_shader_pass.h"
 
@@ -40,6 +43,16 @@ namespace RT64 {
             PFN_libra_error_write errorWrite = nullptr;
             PFN_libra_error_free_string errorFreeString = nullptr;
             PFN_libra_error_free errorFree = nullptr;
+            PFN_libra_preset_get_runtime_params getParams = nullptr;
+            PFN_libra_preset_free_runtime_params freeParams = nullptr;
+            PFN_libra_preset_set_param presetSetParam = nullptr;
+            PFN_libra_vk_filter_chain_set_param chainSetParam = nullptr;
+        };
+
+        // The parameters (#pragma parameter) of the built preset, and the values the player set for it.
+        struct Param {
+            std::string name, description;
+            float initial, minimum, maximum, step;
         };
 
         Librashader libra;
@@ -47,6 +60,9 @@ namespace RT64 {
         std::filesystem::path wantedPreset;
         uint64_t wantedGeneration = 0;
         std::string status;
+        std::vector<Param> presetParams;                       // settingsMutex
+        std::map<std::string, float> paramOverrides;           // settingsMutex
+        bool paramsDirty = false;                              // settingsMutex
 
         void setStatus(const std::string &text) {
             std::scoped_lock lock(settingsMutex);
@@ -119,6 +135,10 @@ namespace RT64 {
             LIBRA_LOAD(errorWrite, "libra_error_write");
             LIBRA_LOAD(errorFreeString, "libra_error_free_string");
             LIBRA_LOAD(errorFree, "libra_error_free");
+            LIBRA_LOAD(getParams, "libra_preset_get_runtime_params");
+            LIBRA_LOAD(freeParams, "libra_preset_free_runtime_params");
+            LIBRA_LOAD(presetSetParam, "libra_preset_set_param");
+            LIBRA_LOAD(chainSetParam, "libra_vk_filter_chain_set_param");
 #       undef LIBRA_LOAD
             libra.loaded = libra.abiVersion && libra.presetCreate && libra.presetFree && libra.chainCreateDeferred &&
                 libra.chainFrame && libra.chainFree && libra.errorWrite && libra.errorFreeString && libra.errorFree &&
@@ -151,7 +171,28 @@ namespace RT64 {
         if (presetPath != wantedPreset) {
             wantedPreset = presetPath;
             wantedGeneration++;
+            paramOverrides.clear();
+            presetParams.clear();
         }
+    }
+
+    std::string getShaderParams() {
+        std::scoped_lock lock(settingsMutex);
+        std::string out;
+        char num[160];
+        for (const Param &p : presetParams) {
+            auto it = paramOverrides.find(p.name);
+            float v = it != paramOverrides.end() ? it->second : p.initial;
+            snprintf(num, sizeof num, "\t%g\t%g\t%g\t%g\n", v, p.minimum, p.maximum, p.step);
+            out += p.name + "\t" + p.description + num;
+        }
+        return out;
+    }
+
+    void setShaderParam(const std::string &name, float value) {
+        std::scoped_lock lock(settingsMutex);
+        paramOverrides[name] = value;
+        paramsDirty = true;
     }
 
     std::string getShaderStatus() {
@@ -271,6 +312,31 @@ namespace RT64 {
                 setStatus("The shader preset couldn't be read: " + errorText(error));
                 return false;
             }
+            {
+                // its parameters, and the player's values from the start
+                std::vector<Param> params;
+                if (libra.getParams != nullptr) {
+                    libra_preset_param_list_t list = {};
+                    if (libra.getParams(&librashaderPreset, &list) == nullptr) {
+                        for (uint64_t i = 0; i < list.length; i++) {
+                            const libra_preset_param_t &p = list.parameters[i];
+                            params.push_back({ p.name ? p.name : "", p.description ? p.description : "", p.initial,
+                                               p.minimum, p.maximum, p.step });
+                        }
+                        libra.freeParams(list);
+                    }
+                }
+                std::scoped_lock lock(settingsMutex);
+                presetParams = std::move(params);
+                if (libra.presetSetParam != nullptr) {
+                    for (const auto &[name, value] : paramOverrides) {
+                        if (libra_error_t e = libra.presetSetParam(&librashaderPreset, name.c_str(), value)) {
+                            errorText(e);
+                        }
+                    }
+                }
+                paramsDirty = false;
+            }
 
             VulkanDevice *vulkanDevice = static_cast<VulkanDevice *>(device);
             libra_device_vk_t vulkanObjects = {};
@@ -308,6 +374,22 @@ namespace RT64 {
             fprintf(stderr, "[Shader] preset in use: %s\n", presetUtf8.c_str());
         }
 
+        // values the player changed since: into the built chain (this thread draws with it)
+        std::map<std::string, float> changed;
+        {
+            std::scoped_lock lock(settingsMutex);
+            if (paramsDirty) {
+                changed = paramOverrides;
+                paramsDirty = false;
+            }
+        }
+        if (libra.chainSetParam != nullptr) {
+            for (const auto &[name, value] : changed) {
+                if (libra_error_t e = libra.chainSetParam(&impl->chain, name.c_str(), value)) {
+                    errorText(e);
+                }
+            }
+        }
         return true;
     }
 

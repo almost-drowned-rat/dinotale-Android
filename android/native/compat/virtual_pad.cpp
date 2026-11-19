@@ -5,6 +5,8 @@
  */
 #include "virtual_pad.h"
 
+#include <string>
+
 #include <atomic>
 #include <cmath>
 #include <jni.h>
@@ -96,6 +98,19 @@ VP_JNI jboolean JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_nat
 #ifdef DT_SHADER_PRESETS
 void dinotale_shader_set_path(const char* path);
 bool dinotale_shader_compiling();
+std::string dinotale_shader_params();
+void dinotale_shader_set_param(const char* name, float value);
+
+VP_JNI jstring JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_nativeShaderParams(JNIEnv* env, jclass) {
+    return env->NewStringUTF(dinotale_shader_params().c_str());
+}
+
+VP_JNI void JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_nativeShaderSetParam(JNIEnv* env, jclass, jstring name,
+                                                                                         jfloat value) {
+    const char* n = env->GetStringUTFChars(name, nullptr);
+    dinotale_shader_set_param(n, value);
+    env->ReleaseStringUTFChars(name, n);
+}
 
 VP_JNI jboolean JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_nativeShaderCompiling(JNIEnv*, jclass) {
     return dinotale_shader_compiling() ? JNI_TRUE : JNI_FALSE;

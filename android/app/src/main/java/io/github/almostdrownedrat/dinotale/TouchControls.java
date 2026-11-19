@@ -41,7 +41,7 @@ public final class TouchControls {
     public interface GameState { boolean running(); boolean menuOpen(); void openGameMenu(); }
 
     /** A port whose shaders are browsed in their own pages (ShaderLibrary): the current one's name and the page. */
-    interface ShaderMenu { String current(); SideMenu.Page page(); }
+    interface ShaderMenu { String current(); SideMenu.Page page(); SideMenu.Page paramsPage(); }
 
     private static final long POLL_MS = 200, ICON_SHOW_MS = 4000;
     private final TouchOverlay overlay;
@@ -294,6 +294,9 @@ public final class TouchControls {
                 if (shaderMenu != null) {
                     l.add(new SideMenu.Item("Shader:  " + shaderMenu.current() + "  ›") {
                         @Override void run() { menu.push(shaderMenu.page()); }
+                    });
+                    l.add(new SideMenu.Item("Shader parameters  ›") {
+                        @Override void run() { menu.push(shaderMenu.paramsPage()); }
                     });
                 }
                 l.add(new SideMenu.Item("Touch controls  ›") { @Override void run() { menu.push(touchPage()); } });
