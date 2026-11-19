@@ -12,7 +12,7 @@
 // The menu: Back to the game, Game settings and controller (the game's own menu, where the controller is set up),
 // Shader (ports with RetroArch shaders: Off / CRT / ...),
 // Touch controls (as in Orta Recompiled for Android: Touch buttons Automatic / Always / Off, Move and resize, Button
-// size, Show / hide single buttons, Opacity, Stick sensitivity, Reset layout), Exit game (asks first; the activity
+// size, Show / hide single buttons, Opacity, Stick sensitivity, Reset layout), Exit game (right away; the activity
 // is finished so SDL tells the game to quit and it can write its saves; the process ends a few seconds later).
 // SPDX-License-Identifier: GPL-3.0-or-later
 package io.github.almostdrownedrat.dinotale;
@@ -298,18 +298,7 @@ public final class TouchControls {
                     }
                 }
                 l.add(new SideMenu.Item("Touch controls  ›") { @Override void run() { menu.push(touchPage()); } });
-                l.add(new SideMenu.Item("Exit game  ›") { @Override void run() { menu.push(exitPage()); } });
-                return l;
-            }
-        };
-    }
-
-    private SideMenu.Page exitPage() {
-        return new SideMenu.Page() {
-            public String title() { return "Exit game?"; }
-            public List<SideMenu.Item> items() {
-                List<SideMenu.Item> l = new ArrayList<>();
-                l.add(new SideMenu.Item("Exit now") { @Override void run() { exitGame(); } });
+                l.add(new SideMenu.Item("Exit game") { @Override void run() { exitGame(); } });
                 return l;
             }
         };

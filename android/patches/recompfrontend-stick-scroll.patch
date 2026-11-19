@@ -1,0 +1,54 @@
+--- a/recompui/src/base/ui_state.cpp
++++ b/recompui/src/base/ui_state.cpp
+@@ -658,6 +658,33 @@
+     ui_state->update_focus(true, false);
+ }
+ 
++// Android ports: the right stick scrolls the menu - the scrolling box around the focused (or hovered) element.
++static float right_stick_scroll_y = 0.0f;
++
++static void scroll_with_right_stick(Rml::Context* context) {
++    using sclock = std::chrono::steady_clock;
++    static sclock::time_point last = sclock::now();
++    sclock::time_point now = sclock::now();
++    float dt = std::min(std::chrono::duration<float>(now - last).count(), 0.1f);
++    last = now;
++    float v = right_stick_scroll_y;
++    if (context == nullptr || std::fabs(v) < 0.2f) {
++        return;
++    }
++    Rml::Element* e = context->GetFocusElement();
++    if (e == nullptr || e == context->GetRootElement()) {
++        e = context->GetHoverElement();
++    }
++    while (e != nullptr && !(e->GetScrollHeight() > e->GetClientHeight() + 1.0f)) {
++        e = e->GetParentNode();
++    }
++    if (e != nullptr) {
++        float sign = v < 0 ? -1.0f : 1.0f;
++        float amount = (std::fabs(v) - 0.2f) / 0.8f;                       // past the dead zone, 0..1
++        e->SetScrollTop(e->GetScrollTop() + sign * amount * amount * 1600.0f * context->GetDensityIndependentPixelRatio() * dt);
++    }
++}
++
+ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer* swap_chain_framebuffer) {
+ 
+     apply_background_input_mode();
+@@ -782,6 +809,9 @@
+                 break;
+             case SDL_EventType::SDL_CONTROLLERAXISMOTION:
+                 SDL_ControllerAxisEvent* axis_event = &cur_event.caxis;
++                if (axis_event->axis == SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_RIGHTY) {
++                    right_stick_scroll_y = axis_event->value * (1 / 32768.0f);   // scrolls the menu (below)
++                }
+                 if (axis_event->axis != SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_LEFTY && axis_event->axis != SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_LEFTX) {
+                     break;
+                 }
+@@ -926,6 +956,7 @@
+         prev_width = width;
+         prev_height = height;
+ 
++        scroll_with_right_stick(ui_state->context);
+         ui_state->context->Update();
+         ui_state->context->Render();
+         ui_state->render_interface.end(command_list, swap_chain_framebuffer);
