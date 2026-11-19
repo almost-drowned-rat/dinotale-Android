@@ -145,6 +145,24 @@ final class ShaderLibrary implements TouchControls.ShaderMenu {
         return false;
     }
 
+    /** Y in the game's settings (Android Options): 0 = shader Off, 1 = the preset's parameter values. */
+    public void reset(int which) {
+        if (which == 0) choose("");
+        else resetParams(chosen(activity), false);
+    }
+
+    private void resetParams(String preset, boolean tell) {
+        if (preset.isEmpty()) return;
+        SharedPreferences.Editor ed = prefs(activity).edit();
+        String prefix = PARAM + preset + "|";
+        for (String k : prefs(activity).getAll().keySet()) if (k.startsWith(prefix)) ed.remove(k);
+        ed.apply();
+        // the shader is built again from its preset: its own values
+        try { target.use(""); target.use(preset); } catch (Throwable ignored) { }
+        if (tell) toast("Default values restored");
+        touch.refreshPage();
+    }
+
     private void choose(String path) {
         prefs(activity).edit().putString("preset", path).apply();
         if (target.live()) {
@@ -237,17 +255,7 @@ final class ShaderLibrary implements TouchControls.ShaderMenu {
                         });
                     }
                     l.add(new SideMenu.Item("Reset to defaults") {
-                        @Override void run() {
-                            SharedPreferences.Editor ed = prefs(activity).edit();
-                            String prefix = PARAM + preset + "|";
-                            for (String k : prefs(activity).getAll().keySet()) if (k.startsWith(prefix)) ed.remove(k);
-                            ed.apply();
-                            // the initial values: what the renderer reports without the player's ones is unknown
-                            // here, so the shader is built again from its preset
-                            try { target.use(""); target.use(preset); } catch (Throwable ignored) { }
-                            toast("Default values restored");
-                            touch.refreshPage();
-                        }
+                        @Override void run() { resetParams(preset, true); }
                     });
                 }
                 return l;

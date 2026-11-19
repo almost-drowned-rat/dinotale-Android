@@ -1,0 +1,30 @@
+--- a/recompui/src/base/ui_state.cpp
++++ b/recompui/src/base/ui_state.cpp
+@@ -667,6 +667,9 @@
+ }
+ 
+ 
++namespace Rml { class Element; }
++namespace recompui { bool reset_focused_option(Rml::Element *focused); }   // ui_config_page_options_menu.cpp
++
+ int cont_axis_to_key(SDL_ControllerAxisEvent& axis, float value) {
+     switch (axis.axis) {
+     case SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_LEFTY:
+@@ -828,6 +831,17 @@
+                 break;
+                 
+             case SDL_EventType::SDL_CONTROLLERBUTTONDOWN: {
++#if defined(__ANDROID__)
++                // Handheld fork: Y puts the focused option back to its default (applying stays on Start).
++                if (cur_event.cbutton.button == SDL_CONTROLLER_BUTTON_Y) {
++                    if (context_capturing_input) {
++                        recompui::reset_focused_option(ui_state->context->GetFocusElement());
++                    }
++                    non_mouse_interacted = true;
++                    cont_interacted = true;
++                    break;
++                }
++#endif
+                 int sdl_key = cont_button_to_key(cur_event.cbutton);
+                 if (context_capturing_input && sdl_key) {
+                     ui_state->context->ProcessKeyDown(convert_sdl_to_rml(sdl_key), 0);

@@ -740,6 +740,12 @@ public class MainActivity extends SDLActivity {
         });
     }
 
+    /** Y on a button in Settings > Android Options (virtual_pad.cpp): 0 = shader Off, 1 = default parameters. */
+    @SuppressWarnings("unused")
+    public void resetShader(final int which) {
+        runOnUiThread(() -> { if (shaderLibrary != null) shaderLibrary.reset(which); });
+    }
+
     /** Settings > Android Options (native, virtual_pad.cpp): 0 = the Shader page, 1 = Shader parameters. */
     @SuppressWarnings("unused")
     public void openShaderMenu(final int which) {

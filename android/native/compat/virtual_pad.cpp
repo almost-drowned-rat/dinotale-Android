@@ -202,14 +202,14 @@ VP_JNI jfloatArray JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_
 // Settings > Android Options: opens the shader pages of the menu Back opens (MainActivity.openShaderMenu:
 // 0 = Shader, 1 = Shader parameters). Any thread.
 #include <SDL.h>
-void android_open_shader_menu(int which) {
+static void call_activity(const char* name, int which) {
     JNIEnv* env = static_cast<JNIEnv*>(SDL_AndroidGetJNIEnv());
     jobject activity = static_cast<jobject>(SDL_AndroidGetActivity());
     if (env == nullptr || activity == nullptr) {
         return;
     }
     jclass cls = env->GetObjectClass(activity);
-    jmethodID method = env->GetMethodID(cls, "openShaderMenu", "(I)V");
+    jmethodID method = env->GetMethodID(cls, name, "(I)V");
     if (method != nullptr) {
         env->CallVoidMethod(activity, method, which);
     }
@@ -219,3 +219,6 @@ void android_open_shader_menu(int which) {
     env->DeleteLocalRef(cls);
     env->DeleteLocalRef(activity);
 }
+
+void android_open_shader_menu(int which) { call_activity("openShaderMenu", which); }
+void android_reset_shader(int which) { call_activity("resetShader", which); }

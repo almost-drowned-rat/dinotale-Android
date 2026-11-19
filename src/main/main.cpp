@@ -467,6 +467,7 @@ void show_android_gpu_driver_menu() {
 void android_open_shader_menu(int which);   // virtual_pad.cpp
 std::string android_shader_name();          // virtual_pad.cpp
 std::string android_shader_params_summary();
+void android_reset_shader(int which);       // virtual_pad.cpp: 0 = shader Off, 1 = default parameters
 #endif
 extern std::vector<recomp::GameEntry> supported_games;  // defined below
 static void on_launcher_init(recompui::LauncherMenu* menu) {
@@ -662,13 +663,14 @@ int main(int argc, char** argv) {
     {
         using recompui::config::OptionButton;
         auto add = [](const char *label, std::function<void()> callback, std::function<std::string()> value, bool before,
-                      bool gap_before) {
+                      bool gap_before, std::function<void()> reset) {
             OptionButton button;
             button.label = label;
             button.callback = std::move(callback);
             button.value = std::move(value);
             button.before = before;
             button.gap_before = gap_before;
+            button.reset = std::move(reset);
             recompui::config::add_option_button("shader_resolution", std::move(button));
         };
         static const char *const resolution_names[] = { "Original", "2x", "Full" };
@@ -677,14 +679,19 @@ int main(int argc, char** argv) {
             const uint32_t *index = std::get_if<uint32_t>(&value);
             return index != nullptr && *index < 3 ? *index : 0;
         };
-        add("Shader...", []() { android_open_shader_menu(0); }, []() { return android_shader_name(); }, true, false);
+        add("Shader...", []() { android_open_shader_menu(0); }, []() { return android_shader_name(); }, true, false,
+            []() { android_reset_shader(0); });
         add("Shader Resolution", [resolution]() {
                 recomp::config::Config &config = recompui::config::get_config("android_options");
                 config.set_option_value("shader_resolution", (resolution() + 1) % 3);
                 config.save_config();
-            }, [resolution]() { return std::string(resolution_names[resolution()]); }, false, false);
+            }, [resolution]() { return std::string(resolution_names[resolution()]); }, false, false, []() {
+                recomp::config::Config &config = recompui::config::get_config("android_options");
+                config.set_option_value("shader_resolution", 0u);
+                config.save_config();
+            });
         add("Shader parameters...", []() { android_open_shader_menu(1); }, []() { return android_shader_params_summary(); },
-            false, false);
+            false, false, []() { android_reset_shader(1); });
         add("GPU Driver (Turnip)...", []() { show_android_gpu_driver_menu(); }, []() {
                 // the driver's name comes from a file: asked once a second
                 static std::string name;
@@ -695,7 +702,7 @@ int main(int argc, char** argv) {
                     asked = now;
                 }
                 return name;
-            }, false, true);
+            }, false, true, nullptr);
     }
 #endif
     recompui::config::create_controls_tab();
