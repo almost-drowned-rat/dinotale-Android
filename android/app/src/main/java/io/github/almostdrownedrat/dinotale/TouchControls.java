@@ -13,7 +13,7 @@
 // The menu: Back to the game, Settings (the game's own menu, where the controller is set up), Touch controls (as in
 // Orta Recompiled for Android: Touch buttons Automatic / Always / Off, Move and resize, Button size, Show / hide
 // single buttons, Opacity, Stick sensitivity, Reset layout), Shaders (the GLES ports: ShaderLibrary's category page),
-// FPS / frame time, Exit game (right away; the activity is finished so SDL tells the game to quit and it can write
+// FPS (frame rate and frame time), Exit game (right away; the activity is finished so SDL tells the game to quit and it can write
 // its saves; the process ends a few seconds later).
 // SPDX-License-Identifier: GPL-3.0-or-later
 package io.github.almostdrownedrat.dinotale;
@@ -376,7 +376,7 @@ public final class TouchControls {
                     });
                 }
                 if (fpsMeasured()) {
-                    l.add(new SideMenu.Item("FPS / frame time") {
+                    l.add(new SideMenu.Item("FPS") {
                         @Override String value() { return fpsOn ? "On" : "Off"; }
                         @Override void step(int d) {
                             fpsOn = !fpsOn;
