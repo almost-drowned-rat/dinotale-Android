@@ -194,8 +194,10 @@ final class SideMenu extends FrameLayout {
             case KeyEvent.KEYCODE_DPAD_RIGHT: if (cur() != null && cur().isValue()) activate(+1); break;
             case KeyEvent.KEYCODE_BUTTON_A: case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_ENTER:
                 activate(+1); break;
-            case KeyEvent.KEYCODE_BUTTON_B: case KeyEvent.KEYCODE_BACK: case KeyEvent.KEYCODE_ESCAPE:
+            case KeyEvent.KEYCODE_BUTTON_B: case KeyEvent.KEYCODE_ESCAPE:
                 back(); break;
+            case KeyEvent.KEYCODE_BACK:   // Android's Back: the whole menu (TouchControls.onBack handles it first)
+                close(); break;
             case KeyEvent.KEYCODE_BUTTON_START: case KeyEvent.KEYCODE_BUTTON_SELECT:
                 close(); break;
             default: break;

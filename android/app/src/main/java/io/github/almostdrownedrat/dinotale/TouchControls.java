@@ -217,10 +217,10 @@ public final class TouchControls {
     }
 
     /** Android's Back (from onKey, or the activity's OnBackInvokedCallback for the back gesture). True = handled:
-     *  the menu opens, goes back a level or closes. False = it is the game's (its menu is open, Back closes it)
+     *  the menu opens, or closes as a whole (from any sub-page). False = it is the game's (its menu is open, Back closes it)
      *  or the system's (the launcher). */
     public boolean onBack() {
-        if (menu.isOpen()) { menu.back(); return true; }
+        if (menu.isOpen()) { menu.close(); return true; }   // Back closes the whole menu (B goes back one level)
         if (overlay.isEditing()) { overlay.setEditing(false); setTouchable(false); updateIcon(); return true; }
         if (!backIsOurs()) return false;
         openMenu();
