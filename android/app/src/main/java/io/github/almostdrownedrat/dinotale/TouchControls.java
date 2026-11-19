@@ -10,11 +10,11 @@
 // toggles it; any Back key, also a handheld's own, which arrives as a controller button). The
 // small icon at the top centre opens the same menu by touch: shown with the buttons; with the buttons off or
 // hidden for a controller, any touch shows it for a few seconds.
-// The menu: Back to the game, Game settings and controller (the game's own menu, where the controller is set up),
-// Shader (ports with RetroArch shaders: ShaderLibrary's packs and presets),
-// Touch controls (as in Orta Recompiled for Android: Touch buttons Automatic / Always / Off, Move and resize, Button
-// size, Show / hide single buttons, Opacity, Stick sensitivity, Reset layout), Exit game (right away; the activity
-// is finished so SDL tells the game to quit and it can write its saves; the process ends a few seconds later).
+// The menu: Back to the game, Settings (the game's own menu, where the controller is set up), Touch controls (as in
+// Orta Recompiled for Android: Touch buttons Automatic / Always / Off, Move and resize, Button size, Show / hide
+// single buttons, Opacity, Stick sensitivity, Reset layout), Shaders (the GLES ports: ShaderLibrary's category page),
+// FPS / frame time, Exit game (right away; the activity is finished so SDL tells the game to quit and it can write
+// its saves; the process ends a few seconds later).
 // SPDX-License-Identifier: GPL-3.0-or-later
 package io.github.almostdrownedrat.dinotale;
 
@@ -356,14 +356,15 @@ public final class TouchControls {
             public List<SideMenu.Item> items() {
                 List<SideMenu.Item> l = new ArrayList<>();
                 l.add(new SideMenu.Item("Back to the game") { @Override void run() { menu.close(); } });
-                l.add(new SideMenu.Item("Game settings and controller") {
+                l.add(new SideMenu.Item("Settings") {   // the game's own menu (also where the controller is set up)
                     @Override void run() {
                         menu.close();
                         try { game.openGameMenu(); } catch (UnsatisfiedLinkError ignored) { }
                     }
                 });
+                l.add(new SideMenu.Item("Touch controls  ›") { @Override void run() { menu.push(touchPage()); } });
                 if (shaderMenu != null && shaderRows && shaderMenu.categoryPage() != null) {
-                    l.add(new SideMenu.Item("Shader:  " + shaderMenu.current() + "  ›") {
+                    l.add(new SideMenu.Item("Shaders  ›") {
                         @Override void run() { menu.push(shaderMenu.categoryPage()); }
                     });
                 } else if (shaderMenu != null && shaderRows) {
@@ -384,7 +385,6 @@ public final class TouchControls {
                         @Override boolean reset() { if (fpsOn) step(1); return true; }
                     });
                 }
-                l.add(new SideMenu.Item("Touch controls  ›") { @Override void run() { menu.push(touchPage()); } });
                 l.add(new SideMenu.Item("Exit game") { @Override void run() { exitGame(); } });
                 return l;
             }
