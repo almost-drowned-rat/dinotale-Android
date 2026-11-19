@@ -18,6 +18,10 @@ final class Progress95 extends View {
     private String title = "", status = "";
     private float fraction = -1f;
     private long started;
+    private boolean opaque;
+
+    /** Black behind the dialog instead of the dimmed game (a setup screen, as in Orta's launcher). */
+    void setOpaque(boolean o) { opaque = o; invalidate(); }
 
     Progress95(Context c) {
         super(c);
@@ -59,7 +63,7 @@ final class Progress95 extends View {
     protected void onDraw(Canvas c) {
         float W = getWidth(), H = getHeight();
         paint.setStyle(Paint.Style.FILL);
-        paint.setColor(0x99000000);                       // the game dimmed behind the dialog
+        paint.setColor(opaque ? 0xFF000000 : 0x99000000);  // black (setup) or the game dimmed behind the dialog
         c.drawRect(0, 0, W, H, paint);
 
         // the dialog: Orta's 400 x 118 units, ~60 % of the width
