@@ -470,15 +470,7 @@ static void on_launcher_init(recompui::LauncherMenu* menu) {
         supported_games[0].display_name,
         supported_games[0].thumbnail_bytes,
         recompui::GameOptionsMenuLayout::Center);
-    // the default options, with GPU Driver (Android) on the line before Exit
-    options->add_start_game_or_load_rom_option();
-    options->add_setup_controls_option();
-    options->add_settings_option();
-    options->add_mods_option();
-#ifdef __ANDROID__
-    options->add_option("GPU Driver", []() { show_android_gpu_driver_menu(); });
-#endif
-    options->add_exit_option();
+    options->add_default_options();
     dinotale::launcher_init(menu, options);
 }
 
@@ -702,6 +694,11 @@ int main(int argc, char** argv) {
 
     // The launcher screen: recompui's launcher with DinoTale's own scene and
     // layout (launcher.cpp, assets/launcher).
+#ifdef __ANDROID__
+    // Settings > Graphics: the GPU driver (Turnip, adrenotools) under HUD Placement (lib-patches/RecompFrontend/0004).
+    recompui::config::add_option_button(recompui::config::graphics::options::hr_option, "GPU Driver (Turnip)...",
+                                        []() { show_android_gpu_driver_menu(); });
+#endif
     recompui::register_launcher_init_callback(on_launcher_init);
     recompui::register_launcher_update_callback(dinotale::launcher_update);
 
