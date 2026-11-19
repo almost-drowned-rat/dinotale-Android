@@ -35,9 +35,9 @@ Needs Android 8.0 or newer, a 64-bit (arm64) device and a GPU with Vulkan. App I
 - **Back** (the back gesture, the system bar's back button or a handheld's own Back key) opens the menu over the
   game, fully usable with the controller (D-pad / stick, **A** choose, **B** back, holding the D-pad keeps moving):
   - **Back to the game**
-  - **Game settings and controller** — the game's own settings
-  - **FPS / frame time** — a small readout in the corner
   - **Touch controls** — mode, move and resize, size, single buttons, opacity, stick sensitivity, reset
+  - **Settings** — the game's own settings
+  - **FPS** — a small readout of the frame rate and frame time in the corner
   - **Exit game**
 
   With the game's settings open, Back closes them. In all menus **Y** sets the selected setting back to its
