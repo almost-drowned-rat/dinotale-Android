@@ -24,6 +24,7 @@
 // Android: main() is SDL_main, called by SDLActivity (libmain.so); its arguments come from MainActivity.getArguments().
 #include "SDL_main.h"
 #include "android_paths.h"
+#include "custom_driver.h"
 #include "file_bridge.h"
 #include "app_restart.h"
 #include "crash_handler.h"
@@ -404,6 +405,63 @@ static void on_vi() {
 
 // The launcher: the game's options (start / load ROM, controls, settings,
 // mods, exit), then DinoTale's scene around them (launcher.cpp).
+#ifdef __ANDROID__
+// The launcher's GPU Driver option (as in DK64 Recompiled for Android): install a Turnip driver (.zip / .so, through
+// the file picker; GpuDriverInstaller.java installs and probes it) or go back to the system driver. RT64 / plume
+// set up Vulkan once per process with the driver chosen at start, so either change restarts the app (a running
+// VkInstance stays tied to the old driver and would crash on the next device or swap chain).
+namespace {
+void request_app_restart_after_delay(int delay_ms) {
+    // a moment for SDL to come back from the message box before the activity finishes
+    std::thread([delay_ms]() {
+        if (delay_ms > 0) std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+        dk64::native_request_app_restart();
+    }).detach();
+}
+
+void show_android_gpu_driver_menu() {
+    const std::string status = dk64driver::status_text();
+    SDL_MessageBoxButtonData buttons[3]{};
+    int num_buttons = 0;
+    const int ID_CANCEL = 0, ID_INSTALL = 1, ID_RESET = 2;
+    buttons[num_buttons++] = { SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, ID_INSTALL, "Install driver (.zip)..." };
+    if (dk64_adrenotools_custom_driver_active()) {
+        buttons[num_buttons++] = { 0, ID_RESET, "Use system driver" };
+    }
+    buttons[num_buttons++] = { SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, ID_CANCEL, "Cancel" };
+
+    SDL_MessageBoxData data{};
+    data.flags = SDL_MESSAGEBOX_INFORMATION;
+    data.title = "GPU Driver";
+    data.message = status.c_str();
+    data.numbuttons = num_buttons;
+    data.buttons = buttons;
+    int buttonid = -1;
+    if (SDL_ShowMessageBox(&data, &buttonid) != 0) {
+        fprintf(stderr, "SDL_ShowMessageBox failed: %s\n", SDL_GetError());
+        return;
+    }
+    if (buttonid == ID_INSTALL) {
+        androidport::filedialog::request(androidport::filedialog::Kind::DriverZip,
+            [](bool ok, const std::string& payload) {
+                if (ok) {
+                    const std::string full = payload + "\n\nThe app will now restart to load the new driver.";
+                    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "GPU Driver", full.c_str(), nullptr);
+                    request_app_restart_after_delay(800);
+                } else {
+                    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "GPU Driver", payload.c_str(), nullptr);
+                }
+            });
+    } else if (buttonid == ID_RESET) {
+        dk64driver::reset_selection();
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "GPU Driver",
+            "Custom driver removed.\nThe app will now restart to load the system driver.", nullptr);
+        request_app_restart_after_delay(800);
+    }
+}
+} // namespace
+#endif
+
 extern std::vector<recomp::GameEntry> supported_games;  // defined below
 static void on_launcher_init(recompui::LauncherMenu* menu) {
     auto options = menu->init_game_options_menu(
@@ -413,6 +471,9 @@ static void on_launcher_init(recompui::LauncherMenu* menu) {
         supported_games[0].thumbnail_bytes,
         recompui::GameOptionsMenuLayout::Center);
     options->add_default_options();
+#ifdef __ANDROID__
+    options->add_option("GPU Driver", []() { show_android_gpu_driver_menu(); });
+#endif
     dinotale::launcher_init(menu, options);
 }
 
