@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+  <!-- DinoTale launcher background: a picture-book sky over stitched felt hills. Drawn for DinoTale, GPL-3.0-or-later. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6cc8f5"/>
+      <stop offset="0.55" stop-color="#bfe9fb"/>
+      <stop offset="1" stop-color="#fff4cf"/>
+    </linearGradient>
+    <linearGradient id="far" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b4e08a"/>
+      <stop offset="1" stop-color="#8fcf6b"/>
+    </linearGradient>
+    <linearGradient id="mid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7cc95a"/>
+      <stop offset="1" stop-color="#58ad43"/>
+    </linearGradient>
+    <linearGradient id="near" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4fa83f"/>
+      <stop offset="1" stop-color="#3a8c33"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#sky)"/>
+  <!-- sun -->
+  <g transform="translate(1610 190)">
+    <circle r="150" fill="#fff3b0" opacity="0.6"/>
+    <circle r="105" fill="#ffd84d"/>
+    <circle r="105" fill="none" stroke="#f0a92a" stroke-width="6" stroke-dasharray="14 10"/>
+    <circle r="82" fill="none" stroke="#fff6c9" stroke-width="5" stroke-dasharray="4 14" stroke-linecap="round"/>
+  </g>
+  <!-- far hills -->
+  <path d="M0 640 C 220 560 380 570 560 620 C 760 675 900 560 1120 575 C 1340 590 1460 660 1660 620 C 1780 596 1860 590 1920 600 L1920 1080 L0 1080 Z" fill="url(#far)"/>
+  <path d="M0 660 C 220 580 380 590 560 640 C 760 695 900 580 1120 595 C 1340 610 1460 680 1660 640 C 1780 616 1860 610 1920 620" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="5" stroke-dasharray="16 12" stroke-linecap="round"/>
+  <!-- middle hills -->
+  <path d="M0 760 C 180 700 330 700 520 745 C 700 788 820 730 1000 715 C 1200 700 1330 770 1520 760 C 1700 750 1820 712 1920 720 L1920 1080 L0 1080 Z" fill="url(#mid)"/>
+  <path d="M0 782 C 180 722 330 722 520 767 C 700 810 820 752 1000 737 C 1200 722 1330 792 1520 782 C 1700 772 1820 734 1920 742" fill="none" stroke="#e9ffd6" stroke-opacity="0.6" stroke-width="5" stroke-dasharray="16 12" stroke-linecap="round"/>
+  <!-- near ground -->
+  <path d="M0 900 C 260 860 520 870 800 890 C 1100 912 1400 860 1920 880 L1920 1080 L0 1080 Z" fill="url(#near)"/>
+  <path d="M0 922 C 260 882 520 892 800 912 C 1100 934 1400 882 1920 902" fill="none" stroke="#d6f5c0" stroke-opacity="0.55" stroke-width="5" stroke-dasharray="16 12" stroke-linecap="round"/>
+  <!-- flowers -->
+  <g>
+    <g transform="translate(980 815)"><circle r="9" fill="#ff8fb1"/><circle r="4" fill="#fff3a0"/></g>
+    <g transform="translate(1060 838)"><circle r="8" fill="#ffffff"/><circle r="3.5" fill="#ffcf3f"/></g>
+    <g transform="translate(1180 800)"><circle r="9" fill="#ffb347"/><circle r="4" fill="#fff6d0"/></g>
+    <g transform="translate(1300 830)"><circle r="8" fill="#c79bff"/><circle r="3.5" fill="#fff3a0"/></g>
+    <g transform="translate(1440 812)"><circle r="9" fill="#ff8fb1"/><circle r="4" fill="#fff3a0"/></g>
+    <g transform="translate(1560 840)"><circle r="8" fill="#ffffff"/><circle r="3.5" fill="#ffcf3f"/></g>
+    <g transform="translate(1700 805)"><circle r="9" fill="#ffb347"/><circle r="4" fill="#fff6d0"/></g>
+    <g transform="translate(1820 828)"><circle r="8" fill="#c79bff"/><circle r="3.5" fill="#fff3a0"/></g>
+    <g transform="translate(700 980)"><circle r="11" fill="#ffffff"/><circle r="5" fill="#ffcf3f"/></g>
+    <g transform="translate(900 1010)"><circle r="11" fill="#ff8fb1"/><circle r="5" fill="#fff3a0"/></g>
+    <g transform="translate(1120 975)"><circle r="11" fill="#ffb347"/><circle r="5" fill="#fff6d0"/></g>
+    <g transform="translate(1350 1015)"><circle r="11" fill="#c79bff"/><circle r="5" fill="#fff3a0"/></g>
+    <g transform="translate(1580 985)"><circle r="11" fill="#ffffff"/><circle r="5" fill="#ffcf3f"/></g>
+    <g transform="translate(1790 1020)"><circle r="11" fill="#ff8fb1"/><circle r="5" fill="#fff3a0"/></g>
+  </g>
+</svg>

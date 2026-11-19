@@ -41,6 +41,7 @@
 #endif
 
 #include "recompui/recompui.h"
+#include "dinotale_launcher.h"
 #include "recompui/program_config.h"
 #include "recompui/renderer.h"
 #include "recompui/config.h"
@@ -401,6 +402,20 @@ static void on_vi() {
     dinotale_update_display_options();
 }
 
+// The launcher: the game's options (start / load ROM, controls, settings,
+// mods, exit), then DinoTale's scene around them (launcher.cpp).
+extern std::vector<recomp::GameEntry> supported_games;  // defined below
+static void on_launcher_init(recompui::LauncherMenu* menu) {
+    auto options = menu->init_game_options_menu(
+        supported_games[0].game_id,
+        supported_games[0].mod_game_id,
+        supported_games[0].display_name,
+        supported_games[0].thumbnail_bytes,
+        recompui::GameOptionsMenuLayout::Center);
+    options->add_default_options();
+    dinotale::launcher_init(menu, options);
+}
+
 static std::string get_game_thread_name(const OSThread* t) {
     return "Game " + std::to_string(t->id);
 }
@@ -529,6 +544,9 @@ int main(int argc, char** argv) {
     // `font-family` to it, and RmlUi draws no text for a family it never
     // loaded.
     recompui::register_primary_font("Exo2.ttf", "Exo 2");
+    // Fredoka SemiBold (SIL OFL 1.1, assets/FREDOKA_LICENSE.txt; a static
+    // instance of Fredoka's variable font) for the launcher's logo and options.
+    recompui::register_extra_font("FredokaSemiBold.ttf");
 
     recomp::register_config_path(recompui::file::get_app_folder_path());
 
@@ -616,8 +634,10 @@ int main(int argc, char** argv) {
         .get_game_thread_name = get_game_thread_name,
     };
 
-    // recompui's own default launcher menu is used, so there's no
-    // register_launcher_init_callback call here.
+    // The launcher screen: recompui's launcher with DinoTale's own scene and
+    // layout (launcher.cpp, assets/launcher).
+    recompui::register_launcher_init_callback(on_launcher_init);
+    recompui::register_launcher_update_callback(dinotale::launcher_update);
 
     recomp::start({
         .argc = argc,

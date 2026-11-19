@@ -143,6 +143,10 @@ log.
 - [librashader](https://github.com/SnowflakePowered/librashader) by SnowflakePowered (MPL-2.0 / GPL-3.0), the
   shader runtime, and the shipped presets from [libretro/slang-shaders](https://github.com/libretro/slang-shaders)
   (authors and licences in `assets/shaders/LICENSES.txt`)
+- The launcher screen's layout follows [DK64 Recompiled](https://github.com/Rainchus/Donkey-Kong-64-Recompiled)'s
+  launcher; its pictures (`assets/launcher`: sky, hills, the dinosaur's hill, clouds) were drawn for DinoTale
+  (GPL-3.0), the logo and options use [Fredoka](https://github.com/hafontia/Fredoka-One) by the Fredoka Project
+  Authors (SIL OFL 1.1, `assets/FREDOKA_LICENSE.txt`; a static SemiBold instance of the variable font)
 
 ## License
 

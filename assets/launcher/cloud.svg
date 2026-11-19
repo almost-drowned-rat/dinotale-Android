@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 180">
+  <!-- A felt cloud for DinoTale's launcher. Drawn for DinoTale, GPL-3.0-or-later. -->
+  <path d="M60 150 C 15 150 10 95 55 88 C 50 45 110 25 140 58 C 160 15 240 10 260 55 C 290 20 360 30 360 80 C 410 75 440 110 420 140 C 412 152 400 155 385 155 Z" fill="#ffffff"/>
+  <path d="M60 140 C 28 140 24 103 60 98 C 58 60 108 42 138 72 C 160 32 236 28 254 68 C 284 36 348 46 348 92 C 394 88 422 116 406 136 C 400 143 392 145 382 145 Z" fill="none" stroke="#9fd3ef" stroke-width="4" stroke-dasharray="10 9" stroke-linecap="round"/>
+</svg>
