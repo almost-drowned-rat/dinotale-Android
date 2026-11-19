@@ -470,10 +470,15 @@ static void on_launcher_init(recompui::LauncherMenu* menu) {
         supported_games[0].display_name,
         supported_games[0].thumbnail_bytes,
         recompui::GameOptionsMenuLayout::Center);
-    options->add_default_options();
+    // the default options, with GPU Driver (Android) on the line before Exit
+    options->add_start_game_or_load_rom_option();
+    options->add_setup_controls_option();
+    options->add_settings_option();
+    options->add_mods_option();
 #ifdef __ANDROID__
     options->add_option("GPU Driver", []() { show_android_gpu_driver_menu(); });
 #endif
+    options->add_exit_option();
     dinotale::launcher_init(menu, options);
 }
 
