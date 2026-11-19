@@ -1,5 +1,7 @@
 // RetroArch slang shader presets for RT64's present, see rt64_shader_pass.h.
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include <algorithm>
+#include <cmath>
 #include <string>
 #include <vector>
 #include <map>
@@ -201,6 +203,11 @@ namespace RT64 {
     }
 
     static std::atomic<bool> compilingNow{ false };
+    static std::atomic<int> resolutionMode{ 0 };
+
+    void setShaderResolution(int mode) {
+        resolutionMode = mode;
+    }
 
     bool shaderCompiling() {
         return compilingNow.load();
@@ -218,8 +225,10 @@ namespace RT64 {
         bool failed = false;
         size_t frameCount = 0;
         RenderDevice *device = nullptr;
-        uint32_t width = 0;
+        uint32_t width = 0;          // the swap chain's
         uint32_t height = 0;
+        uint32_t sourceWidth = 0;    // the game's picture for the shader (Shader Resolution)
+        uint32_t sourceHeight = 0;
         RenderFormat format = RenderFormat::UNKNOWN;
         VkFormat outputFormat = VK_FORMAT_UNDEFINED;
         std::unique_ptr<RenderTexture> source;
@@ -286,10 +295,20 @@ namespace RT64 {
         // surface didn't offer it (Android: B8G8R8A8 asked, R8G8B8A8 used).
         impl->outputFormat = static_cast<VulkanSwapChain *>(swapChain)->pickedSurfaceFormat.format;
 
-        // The game's picture is drawn into an image of the swap chain's size and format.
-        if ((impl->source == nullptr) || (impl->device != device) || (impl->width != width) || (impl->height != height) || (impl->format != format)) {
+        // The game's picture is drawn into an image of the swap chain's format, at the N64's 240 lines (or twice that)
+        // with the window's aspect ratio, or at the window's size (Shader Resolution).
+        uint32_t sourceWidth = width, sourceHeight = height;
+        const int mode = resolutionMode.load();
+        if (mode == 0 || mode == 1) {
+            sourceHeight = std::min<uint32_t>(height, mode == 0 ? 240u : 480u);
+            sourceWidth = std::max<uint32_t>(1u, static_cast<uint32_t>(std::lround(double(sourceHeight) * width / height)));
+        }
+        if ((impl->source == nullptr) || (impl->device != device) || (impl->width != width) || (impl->height != height) || (impl->format != format)
+            || (impl->sourceWidth != sourceWidth) || (impl->sourceHeight != sourceHeight)) {
             impl->sourceFramebuffer.reset();
-            impl->source = device->createTexture(RenderTextureDesc::ColorTarget(width, height, format));
+            impl->source = device->createTexture(RenderTextureDesc::ColorTarget(sourceWidth, sourceHeight, format));
+            impl->sourceWidth = sourceWidth;
+            impl->sourceHeight = sourceHeight;
             const RenderTexture *sourceTexture = impl->source.get();
             impl->sourceFramebuffer = device->createFramebuffer(RenderFramebufferDesc(&sourceTexture, 1));
             impl->device = device;
@@ -401,6 +420,14 @@ namespace RT64 {
         return impl->source.get();
     }
 
+    uint32_t ShaderPass::sourceWidth() const {
+        return impl->sourceWidth;
+    }
+
+    uint32_t ShaderPass::sourceHeight() const {
+        return impl->sourceHeight;
+    }
+
     void ShaderPass::record(RenderCommandList *commandList, RenderTexture *swapChainTexture) {
         VkCommandBuffer cmd = static_cast<VulkanCommandList *>(commandList)->vk;
         VulkanTexture *source = static_cast<VulkanTexture *>(impl->source.get());
@@ -409,8 +436,8 @@ namespace RT64 {
         libra_image_vk_t input = {};
         input.handle = source->vk;
         input.format = plume::toVk(source->desc.format);
-        input.width = impl->width;
-        input.height = impl->height;
+        input.width = impl->sourceWidth;
+        input.height = impl->sourceHeight;
 
         libra_image_vk_t output = {};
         output.handle = target->vk;

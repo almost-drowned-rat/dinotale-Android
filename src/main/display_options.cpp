@@ -21,6 +21,8 @@ namespace {
     const std::string screen_filter_option = "screen_filter";
     const std::string hybrid_dimming_option = "hybrid_dimming";
     const std::string texture_filter_option = "texture_filter";
+    // Settings > Graphics > Shader Resolution: the size the game's picture is drawn at for a RetroArch shader.
+    const std::string shader_resolution_option = "shader_resolution";
     // Percent the sides are darkened by; the default was chosen by eye.
     constexpr double default_hybrid_dimming = 88.0;
 
@@ -114,6 +116,20 @@ void dinotale_add_display_options(recomp::config::Config &config) {
         0
     );
 
+#ifdef DT_SHADER_PRESETS
+    config.add_enum_option(
+        shader_resolution_option,
+        "Shader Resolution",
+        "The size of the game's picture a RetroArch shader works on. "
+        "<recomp-color primary>Original</recomp-color>: the N64's 240 lines, as in RetroArch - the look the shaders "
+        "were made for (scanlines, CRT masks, pixel upscalers) and by far the lightest. "
+        "<recomp-color primary>2x</recomp-color>: twice that. "
+        "<recomp-color primary>Full</recomp-color>: the window's size - heavy shaders get slow.",
+        std::vector<recomp::config::ConfigOptionEnumOption>{ { 0, "Original" }, { 1, "2x", "2x" }, { 2, "Full" } },
+        0u
+    );
+#endif
+
     config.add_percent_number_option(
         hybrid_dimming_option,
         "Hybrid Dimming",
@@ -166,6 +182,12 @@ void dinotale_update_display_options() {
     }
 #endif
 
+#ifdef DT_SHADER_PRESETS
+    const auto shader_resolution = config.get_option_value(shader_resolution_option);
+    if (const uint32_t* value = std::get_if<uint32_t>(&shader_resolution)) {
+        RT64::setShaderResolution(static_cast<int>(*value));
+    }
+#endif
     const auto texture_filter = config.get_option_value(texture_filter_option);
     if (const uint32_t* value = std::get_if<uint32_t>(&texture_filter)) {
         RT64::setSharpTextures(*value == 1);

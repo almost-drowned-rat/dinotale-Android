@@ -28,6 +28,10 @@ namespace RT64 {
     // True while a preset's filter chain is being built (Android: the progress dialog). Any thread.
     bool shaderCompiling();
 
+    // The size the game's picture is drawn at for the shader (Settings > Graphics > Shader Resolution): 0 = the
+    // N64's 240 lines (as in RetroArch), 1 = twice that, 2 = the window's size. Any thread.
+    void setShaderResolution(int mode);
+
     // Whether librashader could be loaded at all (the settings grey the shader choice out without it).
     bool shaderRuntimeAvailable();
 
@@ -42,9 +46,11 @@ namespace RT64 {
         // this before the frame's command list is begun.
         bool prepare(RenderDevice *device, RenderSwapChain *swapChain, RenderWorker *worker, bool vulkan);
 
-        // The image the VI renderer draws into instead of the swap chain image.
+        // The image the VI renderer draws into instead of the swap chain image, and its size.
         RenderFramebuffer *sourceFramebuffer() const;
         RenderTexture *sourceTexture() const;
+        uint32_t sourceWidth() const;
+        uint32_t sourceHeight() const;
 
         // Runs the chain: source (SHADER_READ) -> swap chain image (COLOR_WRITE), over the whole image.
         void record(RenderCommandList *commandList, RenderTexture *swapChainTexture);

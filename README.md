@@ -96,6 +96,10 @@ Import shader pack (.zip) takes a slang shader pack such as libretro/slang-shade
 `Android/data/io.github.almostdrownedrat.dinotale/files/shaders` and lists its folders and presets to pick from;
 a choice is used at once. The presets shipped for the desktop aren't used there - a pack offers far more.
 
+Settings > Graphics > **Shader Resolution** sets the size of the game's picture the shader works on:
+**Original** (the N64's 240 lines, as in RetroArch - the look the shaders were made for, and by far the lightest;
+crt-royale runs at full speed on an Odin 2 Portal), **2x**, or **Full** (the window's size; heavy shaders get slow).
+
 ## Android
 
 The `android` branch of this fork builds an APK for arm64 Android devices with Vulkan (Android 8+), made for

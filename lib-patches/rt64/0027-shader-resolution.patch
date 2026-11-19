@@ -1,0 +1,70 @@
+diff --git a/src/hle/rt64_present_queue.cpp b/src/hle/rt64_present_queue.cpp
+index 52823d4..6e5739c 100644
+--- a/src/hle/rt64_present_queue.cpp
++++ b/src/hle/rt64_present_queue.cpp
+@@ -367,6 +367,11 @@ namespace RT64 {
+                     }
+                 }
+                 
++                if (useShader) {
++                    // the shader's source has its own size (Settings > Graphics > Shader Resolution)
++                    renderParams.targetWidth = shaderPass.sourceWidth();
++                    renderParams.targetHeight = shaderPass.sourceHeight();
++                }
+                 commandList->setFramebuffer(useShader ? shaderPass.sourceFramebuffer() : swapChainFramebuffer);
+                 commandList->clearColor();
+ 
+diff --git a/src/render/rt64_vi_renderer.cpp b/src/render/rt64_vi_renderer.cpp
+index e0e3565..4357c1d 100644
+--- a/src/render/rt64_vi_renderer.cpp
++++ b/src/render/rt64_vi_renderer.cpp
+@@ -112,7 +112,7 @@ namespace RT64 {
+ 
+         RenderViewport viewport;
+         RenderRect scissor;
+-        getViewportAndScissor(p.swapChain, *p.vi, p.resolutionScale, p.downsamplingScale, p.removeBlackBorders, viewport, scissor, p.stretchToWindow);
++        getViewportAndScissor(p.swapChain, *p.vi, p.resolutionScale, p.downsamplingScale, p.removeBlackBorders, viewport, scissor, p.stretchToWindow, p.targetWidth, p.targetHeight);
+         p.commandList->setViewports(viewport);
+         p.commandList->setScissors(scissor);
+ 
+@@ -154,7 +154,7 @@ namespace RT64 {
+         p.commandList->drawInstanced(3, 1, 0, 0);
+     }
+ 
+-    void VIRenderer::getViewportAndScissor(const RenderSwapChain *swapChain, const VI &vi, hlslpp::float2 resolutionScale, uint32_t downsamplingScale, bool removeBlackBorders, RenderViewport &viewport, RenderRect &scissor, bool stretchToWindow) {
++    void VIRenderer::getViewportAndScissor(const RenderSwapChain *swapChain, const VI &vi, hlslpp::float2 resolutionScale, uint32_t downsamplingScale, bool removeBlackBorders, RenderViewport &viewport, RenderRect &scissor, bool stretchToWindow, uint32_t targetWidth, uint32_t targetHeight) {
+         // We define three different coordinate spaces to work with to translate the VI parameters into the Window.
+         //
+         // VideoSD: This corresponds to the SD TV Scanline space, which is what the VI natively works on.
+@@ -170,7 +170,9 @@ namespace RT64 {
+         // specified by the VI.
+         const hlslpp::float2 sdSize = removeBlackBorders ? hlslpp::float2(vi.fbSize()) : hlslpp::float2(320.0f, 240.0f);
+         const hlslpp::float2 hdSize = computeHDSize(sdSize, resolutionScale, downsamplingScale);
+-        const hlslpp::float2 windowSize = { float(swapChain->getWidth()), float(swapChain->getHeight()) };
++        const hlslpp::float2 windowSize = (targetWidth > 0 && targetHeight > 0)
++            ? hlslpp::float2(float(targetWidth), float(targetHeight))
++            : hlslpp::float2(float(swapChain->getWidth()), float(swapChain->getHeight()));
+ 
+         // Query the VI for the current rendering area.
+         hlslpp::float4 viViewRect = vi.viewRectangle() * sdSize.xyxy;
+diff --git a/src/render/rt64_vi_renderer.h b/src/render/rt64_vi_renderer.h
+index d13a59b..cf367f5 100644
+--- a/src/render/rt64_vi_renderer.h
++++ b/src/render/rt64_vi_renderer.h
+@@ -32,11 +32,14 @@ namespace RT64 {
+             bool stretchToWindow = false;
+             // DinoTale "Hybrid": dim the stretched sides outside the 4:3 screen.
+             bool dimSides = false;
++            // DinoTale shaders: the size of the image drawn into when it isn't the swap chain's (0: the swap chain).
++            uint32_t targetWidth = 0;
++            uint32_t targetHeight = 0;
+         };
+ 
+         VIRenderer();
+         ~VIRenderer();
+         void render(const RenderParams &p);
+-        static void getViewportAndScissor(const RenderSwapChain *swapChain, const VI &vi, hlslpp::float2 resolutionScale, uint32_t downsamplingScale, bool removeBlackBorders, RenderViewport &viewport, RenderRect &scissor, bool stretchToWindow = false);
++        static void getViewportAndScissor(const RenderSwapChain *swapChain, const VI &vi, hlslpp::float2 resolutionScale, uint32_t downsamplingScale, bool removeBlackBorders, RenderViewport &viewport, RenderRect &scissor, bool stretchToWindow = false, uint32_t targetWidth = 0, uint32_t targetHeight = 0);
+     };
+ };
+\ No newline at end of file
