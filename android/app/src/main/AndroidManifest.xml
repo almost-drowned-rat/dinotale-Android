@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- ============================================================
+         Baseado no template android-project do SDL 2.30.8 (vendored).
+         - SDL renderiza em SurfaceView própria; hardwareAccelerated segue
+           o template ("true") — não interfere na superfície do SDL.
+         - uses-feature required=false: não filtrar dispositivos sem
+           touchscreen/gamepad/bluetooth/USB na instalação.
+         - VIBRATE: SDL_Init(HAPTIC) em src/main/main.cpp usa o vibrador.
+         - Vulkan é validado em runtime pelo probe do custom_driver.cpp
+           (a tela Java de setup foi desativada), por isso NÃO declaramos
+           uses-feature vulkan.version required.
+         ============================================================ -->
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.gamepad"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.bluetooth"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.usb.host"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.type.pc"
+        android:required="false" />
+
+    <!-- Vibração (SDL haptics / rumble de gamepad). -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Bluetooth para HID (Steam Controller): opcional, requer BLUETOOTH_CONNECT
+         no Android 12+; o SDL degrada graciosamente sem a permissão.
+         <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" /> -->
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:allowBackup="true"
+        android:largeHeap="true"
+        android:hardwareAccelerated="true"
+        android:appCategory="game"
+        android:isGame="true"
+        android:theme="@style/AppTheme">
+
+        <!-- Identificação como JOGO (pedido do usuário): launchers, stores e
+             o próprio sistema (Game Mode / DND automático) usam estes
+             atributos. isGame é o fallback que launchers antigos e a TV ainda
+             consultam; appCategory é o mecanismo atual (ambos desde a API 26,
+             nosso minSdk). -->
+
+        <!-- Port Android do DK64: Recompiled — gamepad prioridade; touch para menus. -->
+        <!-- Launcher ÚNICA: o app abre direto no SDL. Os assets são copiados no -->
+        <!-- onCreate (AppSetup) e ROM/driver são escolhidos na UI do próprio jogo -->
+        <!-- (menu launcher -> SAF via file_bridge). -->
+        <!-- Handheld-Fork: Neustart nach ROM-/Treiberwahl in frischem Prozess. -->
+        <activity
+            android:name=".RestartActivity"
+            android:process=":restart"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar.Fullscreen" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="sensorLandscape"
+            android:alwaysRetainTaskState="true"
+            android:preferMinimalPostProcessing="true"
+            android:launchMode="singleTask"
+            android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|density|fontScale|keyboard|keyboardHidden|navigation">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Shortcut estático (long-press no ícone no launcher):
+                 "Logs e diagnóstico" -> DiagnosticsActivity. -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+        </activity>
+
+        <!-- Tela de diagnóstico (logs): aberta via shortcut do launcher ou
+             programaticamente. Não é exportada — só o app entra aqui. -->
+        <activity
+            android:name=".DiagnosticsActivity"
+            android:exported="false"
+            android:label="@string/diagnostics_title"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|density|fontScale|keyboard|keyboardHidden|navigation" />
+
+        <!-- Provider mínimo (sem AndroidX) que serve SOMENTE os arquivos do
+             diretório de diagnóstico via content://, para o ACTION_SEND
+             (compartilhar log) funcionar no Android 7+ (que exige content://
+             em vez de file://). Exported=false + grantUriPermissions: o
+             acesso é concedido temporariamente pelo FLAG_GRANT_READ_URI_PERMISSION
+             do Intent de compartilhamento. -->
+        <provider
+            android:name=".DiagnosticsFilesProvider"
+            android:authorities="${applicationId}.diagnostics"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+    </application>
+
+</manifest>

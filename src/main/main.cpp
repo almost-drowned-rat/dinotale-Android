@@ -20,7 +20,17 @@
 #include "ultramodern/ultra64.h"
 #include "ultramodern/ultramodern.hpp"
 
+#ifdef __ANDROID__
+// Android: main() is SDL_main, called by SDLActivity (libmain.so); its arguments come from MainActivity.getArguments().
+#include "SDL_main.h"
+#include "android_paths.h"
+#include "file_bridge.h"
+#include "app_restart.h"
+#include "crash_handler.h"
+#include "virtual_pad.h"
+#else
 #define SDL_MAIN_HANDLED
+#endif
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -172,6 +182,10 @@ static ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callba
         exit_error("Failed to create window: %s", SDL_GetError());
     }
     set_window_icon(window);
+#if defined(__ANDROID__)
+    // Android: immersive full screen (SDLActivity hides the system bars); the swapchain gets the whole display.
+    SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+#endif
 
 #if defined(_WIN32)
     SDL_SysWMinfo wm_info;
@@ -222,9 +236,51 @@ static constexpr uint32_t audio_headroom_vis = 2;
 static constexpr uint32_t audio_soft_cap_ms = 200;
 static constexpr uint32_t audio_hard_cap_ms = 500;
 
+#ifdef __ANDROID__
+// Android: the device is opened once and never closed while the game runs. Reopening it for a new game frequency
+// raced SDL's AAudio backend, whose event pump reads the current stream's timestamp from another thread
+// (AAudioStream_getTimestamp on a closed stream: SIGSEGV right at the game start on the Odin 2 Portal). The game's
+// rate is converted to the device's by an SDL_AudioStream instead, recreated when the frequency changes.
+static SDL_AudioStream* audio_stream = nullptr;
+static uint32_t device_frequency = 48000;
+#endif
+// The rate of what sits in SDL's queue: the device's on Android, the game's elsewhere.
+static uint32_t queued_frequency() {
+#ifdef __ANDROID__
+    return device_frequency;
+#else
+    return game_frequency;
+#endif
+}
+
 static bool open_audio_device(uint32_t frequency) {
     std::lock_guard<std::mutex> lock(audio_mutex);
 
+#ifdef __ANDROID__
+    if (audio_device == 0) {
+        SDL_AudioSpec desired{}, obtained{};
+        desired.freq = 48000;
+        desired.format = AUDIO_F32SYS;
+        desired.channels = static_cast<Uint8>(audio_channels);
+        desired.samples = 512;
+        audio_device = SDL_OpenAudioDevice(nullptr, 0, &desired, &obtained, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
+        if (audio_device == 0) {
+            fprintf(stderr, "Failed to open audio device: %s (continuing without sound)\n", SDL_GetError());
+            game_frequency = frequency;
+            return false;
+        }
+        device_frequency = static_cast<uint32_t>(obtained.freq);
+        SDL_PauseAudioDevice(audio_device, 0);
+    }
+    if (audio_stream != nullptr) {
+        SDL_FreeAudioStream(audio_stream);
+    }
+    audio_stream = SDL_NewAudioStream(AUDIO_F32SYS, static_cast<Uint8>(audio_channels), static_cast<int>(frequency),
+                                      AUDIO_F32SYS, static_cast<Uint8>(audio_channels), static_cast<int>(device_frequency));
+    game_frequency = frequency;
+    SDL_ClearQueuedAudio(audio_device);
+    return audio_stream != nullptr;
+#else
     if (audio_device != 0) {
         SDL_CloseAudioDevice(audio_device);
         audio_device = 0;
@@ -247,6 +303,7 @@ static bool open_audio_device(uint32_t frequency) {
 
     SDL_PauseAudioDevice(audio_device, 0);
     return true;
+#endif
 }
 
 static void queue_samples(int16_t* audio_data, size_t sample_count) {
@@ -265,7 +322,7 @@ static void queue_samples(int16_t* audio_data, size_t sample_count) {
     }
 
     std::lock_guard<std::mutex> lock(audio_mutex);
-    const size_t bytes_per_ms = game_frequency * audio_channels * sizeof(float) / 1000;
+    const size_t bytes_per_ms = queued_frequency() * audio_channels * sizeof(float) / 1000;
     const size_t queued_bytes = SDL_GetQueuedAudioSize(audio_device);
     if (queued_bytes > audio_hard_cap_ms * bytes_per_ms) {
         printf("[AUDIO] %zu ms queued, resyncing\n", queued_bytes / bytes_per_ms);
@@ -275,7 +332,23 @@ static void queue_samples(int16_t* audio_data, size_t sample_count) {
     else if (queued_bytes > audio_soft_cap_ms * bytes_per_ms) {
         return;
     }
+#ifdef __ANDROID__
+    if (audio_stream == nullptr) {
+        return;
+    }
+    SDL_AudioStreamPut(audio_stream, buffer.data(), static_cast<int>(sample_count * sizeof(float)));
+    static std::vector<float> converted;
+    const int available = SDL_AudioStreamAvailable(audio_stream);
+    if (available > 0) {
+        converted.resize(static_cast<size_t>(available) / sizeof(float));
+        const int got = SDL_AudioStreamGet(audio_stream, converted.data(), available);
+        if (got > 0) {
+            SDL_QueueAudio(audio_device, converted.data(), static_cast<Uint32>(got));
+        }
+    }
+#else
     SDL_QueueAudio(audio_device, buffer.data(), static_cast<Uint32>(sample_count * sizeof(float)));
+#endif
 }
 
 static size_t get_frames_remaining() {
@@ -284,6 +357,9 @@ static size_t get_frames_remaining() {
     }
     std::lock_guard<std::mutex> lock(audio_mutex);
     size_t queued_frames = SDL_GetQueuedAudioSize(audio_device) / (audio_channels * sizeof(float));
+#ifdef __ANDROID__
+    queued_frames = queued_frames * game_frequency / device_frequency;   // device frames -> game frames
+#endif
     size_t headroom_frames = game_frequency / 60 * audio_headroom_vis;
     return queued_frames > headroom_frames ? queued_frames - headroom_frames : 0;
 }
@@ -401,6 +477,18 @@ static void find_assets_folder() {
 
 int main(int argc, char** argv) {
     std::set_terminate(report_unhandled_exception_and_abort);
+#ifdef __ANDROID__
+    // Native crashes into logcat (tag DinoTale-Crash), the app's folders from MainActivity, and a working directory
+    // with the UI assets AppSetup.java copied out of the APK (the process starts in "/"). RT64 finds its data folder
+    // through HOME, which an Android app process does not have.
+    androidport::crash::install();
+    androidport::init_from_args(argc, argv);
+    if (!androidport::internal_files_dir().empty()) {
+        SDL_setenv("HOME", androidport::internal_files_dir().c_str(), 1);
+        std::error_code cwd_error;
+        std::filesystem::current_path(androidport::internal_files_dir(), cwd_error);
+    }
+#endif
     find_assets_folder();
 
     recomp::Version project_version{};
@@ -449,7 +537,10 @@ int main(int argc, char** argv) {
     recompui::config::create_general_tab(general_tab_options);
     recomp::config::Config &graphics_tab = recompui::config::create_graphics_tab();
     dinotale_add_display_options(graphics_tab);
+#ifndef __ANDROID__
+    // Lossless Scaling frame generation needs the player's Windows Lossless.dll: not offered on Android.
     dinotale_add_frame_generation_options(graphics_tab);
+#endif
     recompui::config::create_controls_tab();
     recompui::config::create_sound_tab();
     recompui::config::create_mods_tab();
@@ -484,6 +575,19 @@ int main(int argc, char** argv) {
         .set_rumble = recompinput::set_rumble,
         .get_connected_device_info = get_connected_device_info,
     };
+#ifdef __ANDROID__
+    // Touch buttons (android/: TouchOverlay.java, native/compat/virtual_pad.cpp): merged into controller 1's N64 input;
+    // the Java side learns whether the game runs and whether a menu takes input.
+    input_callbacks.poll_input = []() {
+        recompinput::poll_inputs();
+        androidport::virtualpad::update_game_state(ultramodern::is_game_started(), recompinput::game_input_disabled());
+    };
+    input_callbacks.get_input = [](int controller_num, uint16_t* buttons, float* x, float* y) {
+        bool ret = recompinput::profiles::get_n64_input(controller_num, buttons, x, y);
+        androidport::virtualpad::merge_input(controller_num, buttons, x, y);
+        return ret;
+    };
+#endif
 
     ultramodern::events::callbacks_t events_callbacks{
         .vi_callback = on_vi,
