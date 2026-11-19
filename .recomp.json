@@ -1,0 +1,33 @@
+{
+  "$schema": "https://recomp.fyi/schema/v1.json",
+  "game": "Yoshi's Story",
+  "wikidata": "Q2337280",
+  "system": "N64",
+  "type": "recomp",
+  "project": "DinoTale - Android",
+  "status": "released",
+  "targets": [
+    "Android"
+  ],
+  "original": {
+    "region": "USA",
+    "sha1": "b13072fef6c6df48c07d8822c01e5bc59036f6da"
+  },
+  "toolchain": [
+    "N64Recomp",
+    "RT64"
+  ],
+  "maintainers": [
+    {
+      "name": "almost-drowned-rat",
+      "link": "https://github.com/almost-drowned-rat"
+    }
+  ],
+  "links": [
+    {
+      "label": "DinoTale (main project)",
+      "url": "https://github.com/wootbeer/dinotale"
+    }
+  ],
+  "notes": "Android version of DinoTale, a fork of it (branch android). Made with AI assistance."
+}
