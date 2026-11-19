@@ -9,6 +9,8 @@ final class TouchNative {
     static native void nativeTouchPad(int buttons, float x, float y);
     /** The game runs (not the launcher screen). */
     static native boolean nativeGameRunning();
+    /** fps, average and longest frame time (ms) of the last half second (counted per frame drawn). */
+    static native float[] nativeFrameStats();
     /** One of the game's menus takes input (options menu, launcher dialogs). */
     static native boolean nativeMenuOpen();
     /** The RetroArch shader preset to draw with (a .slangp path; "" for none). */

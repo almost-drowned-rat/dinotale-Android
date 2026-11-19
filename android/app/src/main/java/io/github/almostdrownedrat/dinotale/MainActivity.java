@@ -180,6 +180,7 @@ public class MainActivity extends SDLActivity {
             touch = new TouchControls(this, mLayout, TouchNative::nativeTouchPad, new TouchControls.GameState() {
                 @Override public boolean running() { return TouchNative.nativeGameRunning(); }
                 @Override public boolean menuOpen() { return TouchNative.nativeMenuOpen(); }
+                @Override public float[] frameStats() { return TouchNative.nativeFrameStats(); }
                 // the game's options menu opens on Back (AC_BACK in SDL, see RecompFrontend's ui_state.cpp)
                 @Override public void openGameMenu() {
                     onNativeKeyDown(android.view.KeyEvent.KEYCODE_BACK);

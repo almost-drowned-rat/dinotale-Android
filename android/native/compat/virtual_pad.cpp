@@ -124,3 +124,14 @@ VP_JNI void JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_nativeS
     }
 }
 #endif
+
+// FPS / frame time for the menu Back opens (counted in RecompFrontend's draw_hook, android/patches/recompfrontend-frame-stats.patch).
+extern "C" void recompui_frame_stats(float out[3]);
+
+VP_JNI jfloatArray JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_nativeFrameStats(JNIEnv* env, jclass) {
+    float s[3];
+    recompui_frame_stats(s);
+    jfloatArray a = env->NewFloatArray(3);
+    env->SetFloatArrayRegion(a, 0, 3, s);
+    return a;
+}

@@ -39,7 +39,13 @@ import java.util.List;
 public final class TouchControls {
     /** What the game says: is it running (not its launcher), is its own menu open (polled on the UI thread); and
      *  opening its own menu (settings, controller set-up). */
-    public interface GameState { boolean running(); boolean menuOpen(); void openGameMenu(); }   // openGameMenu toggles
+    public interface GameState {
+        boolean running();
+        boolean menuOpen();
+        void openGameMenu();   // toggles the game's own menu
+        /** fps, average and longest frame time (ms) of the last half second; null: not measured by this port. */
+        default float[] frameStats() { return null; }
+    }
 
     /** A port whose shaders are browsed in their own pages (ShaderLibrary): the current one's name and the page. */
     interface ShaderMenu { String current(); SideMenu.Page page(); SideMenu.Page paramsPage(); }
@@ -48,6 +54,8 @@ public final class TouchControls {
     private final TouchOverlay overlay;
     private final SideMenu menu;
     private final Progress95 progress;
+    private final FpsView fps;
+    private boolean fpsOn;
     private final Icon icon;
     private final GameState game;
     private final Activity activity;
@@ -66,6 +74,7 @@ public final class TouchControls {
             }
             overlay.setGameRunning(running);
             overlay.setGameMenuOpen(menuOpen);
+            updateFps(running);
             updateIcon();
             handler.postDelayed(this, POLL_MS);
         }
@@ -95,6 +104,12 @@ public final class TouchControls {
         lp.topMargin = (int) (8 * dp);
         root.addView(icon, lp);
         root.addView(menu, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        fps = new FpsView(a);
+        FrameLayout.LayoutParams fpsLp = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT, android.view.Gravity.TOP | android.view.Gravity.START);
+        fpsLp.leftMargin = fpsLp.topMargin = (int) (8 * dp);
+        root.addView(fps, fpsLp);
+        fpsOn = a.getSharedPreferences("touch", Context.MODE_PRIVATE).getBoolean("fps", false);
         progress = new Progress95(a);
         root.addView(progress, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         icon.setOnClickListener(v -> iconTapped());
@@ -150,6 +165,24 @@ public final class TouchControls {
     private void iconTapped() {
         if (overlay.isEditing()) { overlay.setEditing(false); setTouchable(false); updateIcon(); return; }
         openMenu();
+    }
+
+    private long fpsShown;
+
+    /** The FPS readout while it is on and the game runs, refreshed every half second (from the poll). */
+    private void updateFps(boolean running) {
+        float[] s = null;
+        if (fpsOn && running) {
+            try { s = game.frameStats(); } catch (Throwable ignored) { }
+        }
+        if (s == null) { fps.setVisibility(View.GONE); return; }
+        fps.setVisibility(View.VISIBLE);
+        long now = System.currentTimeMillis();
+        if (now - fpsShown >= 450) { fpsShown = now; fps.set(s[0], s[1], s[2]); }
+    }
+
+    private boolean fpsMeasured() {
+        try { return game.frameStats() != null; } catch (Throwable t) { return false; }
     }
 
     public void onResume() { handler.removeCallbacks(poll); handler.post(poll); }
@@ -306,6 +339,15 @@ public final class TouchControls {
                     });
                     l.add(new SideMenu.Item("Shader parameters  ›") {
                         @Override void run() { menu.push(shaderMenu.paramsPage()); }
+                    });
+                }
+                if (fpsMeasured()) {
+                    l.add(new SideMenu.Item("FPS / frame time") {
+                        @Override String value() { return fpsOn ? "On" : "Off"; }
+                        @Override void step(int d) {
+                            fpsOn = !fpsOn;
+                            activity.getSharedPreferences("touch", Context.MODE_PRIVATE).edit().putBoolean("fps", fpsOn).apply();
+                        }
                     });
                 }
                 l.add(new SideMenu.Item("Touch controls  ›") { @Override void run() { menu.push(touchPage()); } });
