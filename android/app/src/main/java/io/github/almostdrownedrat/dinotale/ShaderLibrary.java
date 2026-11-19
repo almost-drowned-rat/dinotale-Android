@@ -37,6 +37,12 @@ final class ShaderLibrary implements TouchControls.ShaderMenu {
         /** The preset's parameters, one per line: name, description, value, min, max, step (tabs); "" if none. */
         default String params() { return ""; }
         default void setParam(String name, float value) { }
+        /** Shader Resolution in this menu (the GLES ports; DK64 / DinoTale have it in their settings). */
+        default boolean hasResolution() { return false; }
+        /** 0 Original (240 lines), 1 2x, 2 Full; shaderOn: a shader is in use. Called while the game runs. */
+        default void setResolution(int mode, boolean shaderOn) { }
+        /** The engine's own menu is open (the shader then works on the full picture). */
+        default void setEngineMenuOpen(boolean open) { }
     }
 
     static final int PICK_ZIP = 0x5ad;
@@ -96,10 +102,116 @@ final class ShaderLibrary implements TouchControls.ShaderMenu {
         return name.endsWith(".slangp") ? name.substring(0, name.length() - 7) : name;
     }
 
-    @Override public SideMenu.Page page() { return folderPage(folder(activity), "Shader"); }
+    @Override public SideMenu.Page page() { return folderPage(folder(activity), "Shader", true); }
 
-    private SideMenu.Page folderPage(final File dir, final String title) {
-        final boolean top = dir.equals(folder(activity));
+    // ---------------------------------------------------------------- the Shader category (the GLES ports' Back menu)
+
+    private static final String[] RESOLUTIONS = { "Original", "2x", "Full" };
+    private boolean gameRunning, engineMenu;
+
+    static int resolution(Context c) { return Math.max(0, Math.min(2, prefs(c).getInt("resolution", 0))); }
+
+    /** Back > Shader: on / off, the selection, the resolution, the parameters and the import in one place. */
+    @Override public SideMenu.Page categoryPage() {
+        return new SideMenu.Page() {
+            public String title() { return "Shader"; }
+            public List<SideMenu.Item> items() {
+                List<SideMenu.Item> l = new ArrayList<>();
+                l.add(new SideMenu.Item("Shader") {
+                    @Override String value() { return chosen(activity).isEmpty() ? "Off" : "On"; }
+                    @Override void step(int d) { toggle(); }
+                    @Override boolean reset() { if (!chosen(activity).isEmpty()) toggle(); return true; }
+                });
+                l.add(new SideMenu.Item("Shader selection:  " + selectionName() + "  ›") {
+                    @Override void run() { touch.pushPage(folderPage(folder(activity), "Shader selection", false)); }
+                });
+                if (target.hasResolution()) {
+                    l.add(new SideMenu.Item("Shader resolution:  " + RESOLUTIONS[resolution(activity)] + "  ›") {
+                        @Override void run() { touch.pushPage(resolutionPage()); }
+                        @Override boolean reset() { setResolutionMode(0); touch.refreshPage(); return true; }
+                    });
+                }
+                l.add(new SideMenu.Item("Shader parameters  ›") { @Override void run() { touch.pushPage(paramsPage()); } });
+                l.add(new SideMenu.Item(importing ? "Importing shader pack..." : "Import shader pack (.zip)") {
+                    @Override void run() { if (!importing) pickZip(); }
+                });
+                return l;
+            }
+        };
+    }
+
+    /** The preset in use, or the one last used (shown dimmed by name only) when the shader is off. */
+    private String selectionName() {
+        String p = chosen(activity);
+        if (p.isEmpty()) p = last();
+        if (p.isEmpty()) return "none";
+        String name = new File(p).getName();
+        return name.endsWith(".slangp") ? name.substring(0, name.length() - 7) : name;
+    }
+
+    private String last() {
+        String p = prefs(activity).getString("last", "");
+        return p.isEmpty() || new File(p).isFile() ? p : "";
+    }
+
+    /** Shader on: the preset last used (none yet: the selection opens); off: none. */
+    private void toggle() {
+        if (chosen(activity).isEmpty()) {
+            String p = last();
+            if (p.isEmpty()) touch.pushPage(folderPage(folder(activity), "Shader selection", false));
+            else choose(p);
+        } else {
+            choose("");
+        }
+    }
+
+    private SideMenu.Page resolutionPage() {
+        return new SideMenu.Page() {
+            public String title() { return "Shader resolution"; }
+            public List<SideMenu.Item> items() {
+                List<SideMenu.Item> l = new ArrayList<>();
+                final String[] notes = { "  (240 lines, as in RetroArch)", "  (480 lines)", "  (the screen's size)" };
+                for (int i = 0; i < 3; i++) {
+                    final int mode = i;
+                    l.add(new SideMenu.Item((resolution(activity) == i ? "• " : "") + RESOLUTIONS[i] + notes[i]) {
+                        @Override void run() { setResolutionMode(mode); touch.refreshPage(); }
+                    });
+                }
+                return l;
+            }
+        };
+    }
+
+    private void setResolutionMode(int mode) {
+        prefs(activity).edit().putInt("resolution", mode).apply();
+        applyResolution();
+    }
+
+    /** Hands the resolution to the renderer while the game runs; with the shader off, the game's own size. */
+    private void applyResolution() {
+        if (!target.hasResolution() || !gameRunning) return;
+        boolean on = target.live() && !chosen(activity).isEmpty();
+        try { target.setResolution(resolution(activity), on); } catch (Throwable ignored) { }
+    }
+
+    /** TouchControls' poll: the game started (the resolution goes to it) and the engine's menu state. */
+    @Override public void gameState(boolean running, boolean menuOpen) {
+        if (running && !gameRunning) {
+            gameRunning = true;
+            applyResolution();
+        }
+        gameRunning = running;
+        if (menuOpen != engineMenu) {
+            engineMenu = menuOpen;
+            try { target.setEngineMenuOpen(menuOpen); } catch (Throwable ignored) { }
+        }
+    }
+
+    private SideMenu.Page folderPage(final File dir, final String title) { return folderPage(dir, title, true); }
+
+    /** A folder of presets; topRows: Off and the import above the top folder's list (the Shader page of before). */
+    private SideMenu.Page folderPage(final File dir, final String title, final boolean topRows) {
+        final boolean top = topRows && dir.equals(folder(activity));
         return new SideMenu.Page() {
             public String title() { return title; }
             public List<SideMenu.Item> items() {
@@ -116,7 +228,7 @@ final class ShaderLibrary implements TouchControls.ShaderMenu {
                     for (final File f : files) {
                         if (f.isDirectory() && containsPresets(f)) {
                             l.add(new SideMenu.Item(f.getName() + "  ›") {
-                                @Override void run() { touch.pushPage(folderPage(f, f.getName())); }
+                                @Override void run() { touch.pushPage(folderPage(f, f.getName(), topRows)); }
                             });
                         }
                     }
@@ -165,11 +277,13 @@ final class ShaderLibrary implements TouchControls.ShaderMenu {
 
     private void choose(String path) {
         prefs(activity).edit().putString("preset", path).apply();
+        if (!path.isEmpty()) prefs(activity).edit().putString("last", path).apply();
         if (target.live()) {
             try { target.use(path); applySaved(activity, target, path); } catch (Throwable t) { Log.w(TAG, "shader: " + t); }
         } else if (!path.isEmpty()) {
             toast("The shader is used from the next start of the game");
         }
+        applyResolution();
         touch.refreshPage();
     }
 

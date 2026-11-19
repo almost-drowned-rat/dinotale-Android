@@ -48,7 +48,15 @@ public final class TouchControls {
     }
 
     /** A port whose shaders are browsed in their own pages (ShaderLibrary): the current one's name and the page. */
-    interface ShaderMenu { String current(); SideMenu.Page page(); SideMenu.Page paramsPage(); }
+    interface ShaderMenu {
+        String current();
+        SideMenu.Page page();
+        SideMenu.Page paramsPage();
+        /** One Shader page with everything (the GLES ports); null: the two rows of before. */
+        default SideMenu.Page categoryPage() { return null; }
+        /** Every poll: whether the game runs and the engine's own menu is open. */
+        default void gameState(boolean running, boolean menuOpen) { }
+    }
 
     private static final long POLL_MS = 200, ICON_SHOW_MS = 4000;
     private final TouchOverlay overlay;
@@ -75,6 +83,7 @@ public final class TouchControls {
             }
             overlay.setGameRunning(running);
             overlay.setGameMenuOpen(menuOpen);
+            if (shaderMenu != null) shaderMenu.gameState(running, menuOpen);
             updateFps(running);
             updateIcon();
             handler.postDelayed(this, POLL_MS);
@@ -353,7 +362,11 @@ public final class TouchControls {
                         try { game.openGameMenu(); } catch (UnsatisfiedLinkError ignored) { }
                     }
                 });
-                if (shaderMenu != null && shaderRows) {
+                if (shaderMenu != null && shaderRows && shaderMenu.categoryPage() != null) {
+                    l.add(new SideMenu.Item("Shader:  " + shaderMenu.current() + "  ›") {
+                        @Override void run() { menu.push(shaderMenu.categoryPage()); }
+                    });
+                } else if (shaderMenu != null && shaderRows) {
                     l.add(new SideMenu.Item("Shader:  " + shaderMenu.current() + "  ›") {
                         @Override void run() { menu.push(shaderMenu.page()); }
                     });
