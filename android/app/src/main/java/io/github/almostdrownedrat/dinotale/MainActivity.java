@@ -171,12 +171,17 @@ public class MainActivity extends SDLActivity {
             Log.e(TAG, "JNI de reinício do app indisponível: " + e.getMessage());
         }
 
-        // Touch buttons over SDL's surface (TouchControls.java; can be switched on / off in the touch menu
-        // behind the icon at the top centre). Touches off the buttons still reach SDL (touch as a mouse).
+        // Touch buttons over SDL's surface and the menu Back opens (TouchControls.java). Touches off the buttons
+        // still reach SDL (touch as a mouse).
         if (mLayout != null && touch == null) {
             touch = new TouchControls(this, mLayout, TouchNative::nativeTouchPad, new TouchControls.GameState() {
                 @Override public boolean running() { return TouchNative.nativeGameRunning(); }
                 @Override public boolean menuOpen() { return TouchNative.nativeMenuOpen(); }
+                // the game's options menu opens on Back (AC_BACK in SDL, see RecompFrontend's ui_state.cpp)
+                @Override public void openGameMenu() {
+                    onNativeKeyDown(android.view.KeyEvent.KEYCODE_BACK);
+                    onNativeKeyUp(android.view.KeyEvent.KEYCODE_BACK);
+                }
             });
         }
 

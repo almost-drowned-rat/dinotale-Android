@@ -4,11 +4,14 @@
 // a cold start (only SDL's SurfaceView did, until the app went to the background and back), a separate window
 // always shows. The panel takes no touches while the game runs - the activity hands them over (onTouch): a touch
 // on a button or the icon goes to the controls, everything else to SDL (touch as a mouse). With the menu or the
-// layout editor open the panel takes touches itself. Android's Back stays the game's own options menu, so
-// the touch settings sit behind a small icon at the top centre: shown with the buttons; with the buttons off or
+// layout editor open the panel takes touches itself.
+// Android's Back (key or gesture) opens the menu while the game runs - the same in every port, and fully usable
+// with a controller (D-pad / stick, A, B). With the game's own menu open, Back goes to the game and closes it. The
+// small icon at the top centre opens the same menu by touch: shown with the buttons; with the buttons off or
 // hidden for a controller, any touch shows it for a few seconds.
-// The menu (as in Orta Recompiled for Android): Touch buttons Automatic / Always / Off, Move and resize, Button
-// size, Hide single buttons, Opacity, Stick sensitivity, Reset layout, Back to the game.
+// The menu: Back to the game, Game settings and controller (the game's own menu, where the controller is set up),
+// Touch controls (as in Orta Recompiled for Android: Touch buttons Automatic / Always / Off, Move and resize, Button
+// size, Show / hide single buttons, Opacity, Stick sensitivity, Reset layout).
 // SPDX-License-Identifier: GPL-3.0-or-later
 package io.github.almostdrownedrat.dinotale;
 
@@ -31,8 +34,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class TouchControls {
-    /** What the game says: is it running (not its launcher), is its own menu open. Polled on the UI thread. */
-    public interface GameState { boolean running(); boolean menuOpen(); }
+    /** What the game says: is it running (not its launcher), is its own menu open (polled on the UI thread); and
+     *  opening its own menu (settings, controller set-up). */
+    public interface GameState { boolean running(); boolean menuOpen(); void openGameMenu(); }
 
     private static final long POLL_MS = 200, ICON_SHOW_MS = 4000;
     private final TouchOverlay overlay;
@@ -65,6 +69,7 @@ public final class TouchControls {
     private boolean attached, touchable;
     private static final int OWNER_NONE = 0, OWNER_BUTTONS = 1, OWNER_ICON = 2, OWNER_GAME = 3;
     private int owner = OWNER_NONE;
+    private boolean backDownOurs;
 
     public TouchControls(Activity a, View anchor, TouchOverlay.Sink sink, GameState game) {
         this.game = game;
@@ -163,23 +168,41 @@ public final class TouchControls {
 
     /** From the activity's dispatchKeyEvent. True = consumed (the open menu takes every key but Back). */
     public boolean onKey(KeyEvent e) {
-        if (menu.isOpen()) {
-            if (e.getKeyCode() == KeyEvent.KEYCODE_BACK) {      // Back closes the touch menu, not the game's
-                if (e.getAction() == KeyEvent.ACTION_UP) menu.back();
-                return true;
+        if (e.getKeyCode() == KeyEvent.KEYCODE_BACK) {
+            // decided on the press, acted on the release; a Back the game got on its press stays the game's
+            if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                if (e.getRepeatCount() == 0) backDownOurs = backIsOurs();
+                return backDownOurs;
             }
-            return menu.onKey(e);
+            if (e.getAction() == KeyEvent.ACTION_UP && backDownOurs) { backDownOurs = false; onBack(); return true; }
+            return false;
         }
-        if (overlay.isEditing() && e.getKeyCode() == KeyEvent.KEYCODE_BACK) {
-            if (e.getAction() == KeyEvent.ACTION_UP) { overlay.setEditing(false); setTouchable(false); updateIcon(); }
-            return true;
-        }
+        if (menu.isOpen()) return menu.onKey(e);
         if (fromGamepad(e.getSource()) && e.getKeyCode() != KeyEvent.KEYCODE_BACK) {
             if (overlay.shown() && overlay.getMode() == TouchOverlay.MODE_AUTO) android.util.Log.i("TouchControls", "controller key " + e.getKeyCode() + " from "
                 + (e.getDevice() != null ? e.getDevice().getName() : "?") + ": buttons hidden");
             overlay.onGamepadInput();
         }
         return false;
+    }
+
+    /** Whether Back is for the menu here: not in the game's launcher, not while the game's own menu is open. */
+    private boolean backIsOurs() {
+        if (menu.isOpen() || overlay.isEditing()) return true;
+        boolean running = false, gameMenu = false;
+        try { running = game.running(); gameMenu = game.menuOpen(); } catch (UnsatisfiedLinkError ignored) { }
+        return running && !gameMenu;
+    }
+
+    /** Android's Back (from onKey, or the activity's OnBackInvokedCallback for the back gesture). True = handled:
+     *  the menu opens, goes back a level or closes. False = it is the game's (its menu is open, Back closes it)
+     *  or the system's (the launcher). */
+    public boolean onBack() {
+        if (menu.isOpen()) { menu.back(); return true; }
+        if (overlay.isEditing()) { overlay.setEditing(false); setTouchable(false); updateIcon(); return true; }
+        if (!backIsOurs()) return false;
+        openMenu();
+        return true;
     }
 
     /** From dispatchGenericMotionEvent. True = consumed. */
@@ -235,6 +258,24 @@ public final class TouchControls {
     private static String pct(float f) { return Math.round(f * 100) + " %"; }
 
     private SideMenu.Page rootPage() {
+        return new SideMenu.Page() {
+            public String title() { return "Menu"; }
+            public List<SideMenu.Item> items() {
+                List<SideMenu.Item> l = new ArrayList<>();
+                l.add(new SideMenu.Item("Back to the game") { @Override void run() { menu.close(); } });
+                l.add(new SideMenu.Item("Game settings and controller") {
+                    @Override void run() {
+                        menu.close();
+                        try { game.openGameMenu(); } catch (UnsatisfiedLinkError ignored) { }
+                    }
+                });
+                l.add(new SideMenu.Item("Touch controls  ›") { @Override void run() { menu.push(touchPage()); } });
+                return l;
+            }
+        };
+    }
+
+    private SideMenu.Page touchPage() {
         final String[] modes = { "Automatic", "Always", "Off" };
         return new SideMenu.Page() {
             public String title() { return "Touch controls"; }
@@ -261,7 +302,6 @@ public final class TouchControls {
                     @Override void step(int d) { overlay.setSensitivity(Math.max(1f, Math.min(3f, overlay.getSensitivity() + 0.5f * d))); }
                 });
                 l.add(new SideMenu.Item("Reset touch layout") { @Override void run() { overlay.resetLayout(); menu.refresh(); } });
-                l.add(new SideMenu.Item("Back to the game") { @Override void run() { menu.close(); } });
                 return l;
             }
         };

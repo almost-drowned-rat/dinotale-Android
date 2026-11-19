@@ -98,11 +98,14 @@ handhelds like the AYN Odin 2 Portal and phones alike. The Android layer comes f
 [DK64: Recompiled Android port](https://github.com/deivid22srk/dk64-recomp-android) by deivid22srk.
 
 - **Load ROM** opens Android's file picker; the app restarts once to finish setting up.
-- **Touch buttons** (N64 layout: stick, A, B, Z, L, R, START, C buttons; D-pad hidden by default). The controller
-  icon at the top centre opens their settings: Touch buttons Automatic / Always / Off (Automatic hides them while a
+- **Touch buttons** (N64 layout: stick, A, B, Z, L, R, START, C buttons; D-pad hidden by default). Their settings
+  are under Touch controls in the menu (Back, or the controller icon at the top centre): Touch buttons Automatic / Always / Off (Automatic hides them while a
   controller is used and a touch brings them back), move and resize, button size, show / hide single buttons,
   opacity, stick sensitivity, reset. Touches off the buttons work as a mouse in the menus.
-- Android's **Back** opens the game's menu.
+- Android's **Back** (swipe from the edge to show the system bar and tap back, or the back gesture) opens
+  the menu in game — the same in all of this fork's Android ports and fully usable with the controller (D-pad /
+  stick, **A** choose, **B** back): **Back to the game**, **Game settings and controller** (the game's own menu,
+  where the controller is set up) and **Touch controls**. With the game's menu open, Back closes it.
 - Lossless Scaling frame generation isn't available on Android (it needs the Windows `Lossless.dll`).
 
 Build: see `android/` and the steps in BUILDING.md (codegen on a Linux host first, then Gradle with NDK 27).
