@@ -1,5 +1,5 @@
 // DinoTale's launcher screen: a picture-book scene (assets/launcher: sky and stitched hills, a hill with a
-// long-necked dinosaur, felt clouds - drawn for DinoTale), the logo at the top and the game's options on the right,
+// tree, a bush and an egg, felt clouds - drawn for DinoTale), the logo at the top and the game's options on the right,
 // laid out like DK64 Recompiled's launcher. A short intro (logo pops in, the hill rises, the options slide in) is
 // skipped by any key, button or click.
 // SPDX-License-Identifier: GPL-3.0-or-later
@@ -154,7 +154,7 @@ void dinotale::launcher_init(recompui::LauncherMenu *menu, recompui::GameOptions
     recompui::Element *bgc = menu->get_background_container();
     bgc->set_background_color({ 0x8f, 0xd6, 0xff, 0xff });
 
-    // Back to front: sky and hills, clouds, the dinosaur's hill, the logo.
+    // Back to front: sky and hills, clouds, the hill with the tree, the logo.
     st.bg = ctx.create_element<recompui::Svg>(bgc, "launcher/bg.svg");
     st.bg->set_position(recompui::Position::Absolute);
     st.bg->set_top(0);
