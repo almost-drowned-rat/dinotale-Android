@@ -10,8 +10,10 @@
 // small icon at the top centre opens the same menu by touch: shown with the buttons; with the buttons off or
 // hidden for a controller, any touch shows it for a few seconds.
 // The menu: Back to the game, Game settings and controller (the game's own menu, where the controller is set up),
+// Shader (ports with RetroArch shaders: Off / CRT / ...),
 // Touch controls (as in Orta Recompiled for Android: Touch buttons Automatic / Always / Off, Move and resize, Button
-// size, Show / hide single buttons, Opacity, Stick sensitivity, Reset layout).
+// size, Show / hide single buttons, Opacity, Stick sensitivity, Reset layout), Exit game (asks first; the activity
+// is finished so SDL tells the game to quit and it can write its saves; the process ends a few seconds later).
 // SPDX-License-Identifier: GPL-3.0-or-later
 package io.github.almostdrownedrat.dinotale;
 
@@ -38,11 +40,16 @@ public final class TouchControls {
      *  opening its own menu (settings, controller set-up). */
     public interface GameState { boolean running(); boolean menuOpen(); void openGameMenu(); }
 
+    /** A port with RetroArch shaders: their names (the first is "Off"), the current one, choosing one. */
+    public interface Shaders { String[] names(); int current(); void select(int index); }
+
     private static final long POLL_MS = 200, ICON_SHOW_MS = 4000;
     private final TouchOverlay overlay;
     private final SideMenu menu;
     private final Icon icon;
     private final GameState game;
+    private final Activity activity;
+    private Shaders shaders;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private long iconUntil;
     private boolean lastRunning, lastMenu;
@@ -73,6 +80,7 @@ public final class TouchControls {
 
     public TouchControls(Activity a, View anchor, TouchOverlay.Sink sink, GameState game) {
         this.game = game;
+        this.activity = a;
         this.anchor = anchor;
         overlay = new TouchOverlay(a, sink);
         icon = new Icon(a);
@@ -151,6 +159,9 @@ public final class TouchControls {
     }
 
     public boolean isMenuOpen() { return menu.isOpen(); }
+
+    /** Adds the shader choice to the menu (ports with RetroArch shaders). */
+    public void setShaders(Shaders s) { shaders = s; }
 
     private void updateIcon() {
         boolean show = overlay.isGameRunning() && !menu.isOpen() && !overlay.isGameMenuOpen()
@@ -269,10 +280,50 @@ public final class TouchControls {
                         try { game.openGameMenu(); } catch (UnsatisfiedLinkError ignored) { }
                     }
                 });
+                if (shaders != null) {
+                    final String[] names;
+                    String[] n = null;
+                    try { n = shaders.names(); } catch (UnsatisfiedLinkError ignored) { }
+                    names = n;
+                    if (names != null && names.length > 0) {
+                        l.add(new SideMenu.Item("Shader") {        // left / right or A steps through them
+                            @Override String value() {
+                                int c = shaders.current();
+                                return c >= 0 && c < names.length ? names[c] : "?";
+                            }
+                            @Override void step(int d) {
+                                shaders.select((shaders.current() + d + names.length) % names.length);
+                            }
+                        });
+                    }
+                }
                 l.add(new SideMenu.Item("Touch controls  ›") { @Override void run() { menu.push(touchPage()); } });
+                l.add(new SideMenu.Item("Exit game  ›") { @Override void run() { menu.push(exitPage()); } });
                 return l;
             }
         };
+    }
+
+    private SideMenu.Page exitPage() {
+        return new SideMenu.Page() {
+            public String title() { return "Exit game?"; }
+            public List<SideMenu.Item> items() {
+                List<SideMenu.Item> l = new ArrayList<>();
+                l.add(new SideMenu.Item("Exit now") { @Override void run() { exitGame(); } });
+                return l;
+            }
+        };
+    }
+
+    /** Ends the game: finishing the activity makes SDL send the game its quit event (saves are written on the way
+     *  out); the process is ended after a grace period, so the next start is a fresh one. */
+    private void exitGame() {
+        android.util.Log.i("TouchControls", "exit game");
+        menu.close();
+        destroy();
+        activity.finishAndRemoveTask();
+        new Handler(Looper.getMainLooper()).postDelayed(
+            () -> android.os.Process.killProcess(android.os.Process.myPid()), 4000);
     }
 
     private SideMenu.Page touchPage() {

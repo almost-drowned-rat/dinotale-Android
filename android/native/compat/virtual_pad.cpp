@@ -91,3 +91,30 @@ VP_JNI jboolean JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_nat
 VP_JNI jboolean JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_nativeMenuOpen(JNIEnv*, jclass) {
     return g_menu.load(std::memory_order_relaxed) ? JNI_TRUE : JNI_FALSE;
 }
+
+// The shader choice for the menu Back opens (TouchControls.Shaders; src/main/display_options.cpp).
+#ifdef DT_SHADER_PRESETS
+int dinotale_shader_count();
+const char* dinotale_shader_name(int i);
+int dinotale_shader_get();
+void dinotale_shader_set(int i);
+
+VP_JNI jobjectArray JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_nativeShaderNames(JNIEnv* env, jclass) {
+    int n = dinotale_shader_count();
+    jobjectArray a = env->NewObjectArray(n, env->FindClass("java/lang/String"), nullptr);
+    for (int i = 0; i < n; i++) {
+        jstring s = env->NewStringUTF(dinotale_shader_name(i));
+        env->SetObjectArrayElement(a, i, s);
+        env->DeleteLocalRef(s);
+    }
+    return a;
+}
+
+VP_JNI jint JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_nativeShaderGet(JNIEnv*, jclass) {
+    return dinotale_shader_get();
+}
+
+VP_JNI void JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_nativeShaderSet(JNIEnv*, jclass, jint i) {
+    dinotale_shader_set(i);
+}
+#endif

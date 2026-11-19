@@ -11,4 +11,8 @@ final class TouchNative {
     static native boolean nativeGameRunning();
     /** One of the game's menus takes input (options menu, launcher dialogs). */
     static native boolean nativeMenuOpen();
+    /** The shader choices (Off, CRT, ...), the current one, choosing one (applied on the next frame). */
+    static native String[] nativeShaderNames();
+    static native int nativeShaderGet();
+    static native void nativeShaderSet(int index);
 }

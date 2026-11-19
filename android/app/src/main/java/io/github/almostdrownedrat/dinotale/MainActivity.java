@@ -183,6 +183,12 @@ public class MainActivity extends SDLActivity {
                     onNativeKeyUp(android.view.KeyEvent.KEYCODE_BACK);
                 }
             });
+            // the RetroArch shaders (librashader) are chosen in this menu, not in the game's settings
+            touch.setShaders(new TouchControls.Shaders() {
+                @Override public String[] names() { return TouchNative.nativeShaderNames(); }
+                @Override public int current() { return TouchNative.nativeShaderGet(); }
+                @Override public void select(int i) { TouchNative.nativeShaderSet(i); }
+            });
         }
 
         // SurfaceHolder.Callback para o ciclo de vida da Surface nativa.
