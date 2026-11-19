@@ -136,6 +136,7 @@ void dinotale_add_display_options(recomp::config::Config &config) {
 void dinotale_shader_set_path(const char* path) {
     RT64::setShaderPreset(path != nullptr ? std::filesystem::path(path) : std::filesystem::path());
 }
+bool dinotale_shader_compiling() { return RT64::shaderCompiling(); }
 #endif
 
 // Called every VI: hands the applied settings to the renderer.

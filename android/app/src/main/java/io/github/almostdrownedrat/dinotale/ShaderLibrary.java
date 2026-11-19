@@ -30,7 +30,12 @@ import java.util.zip.ZipInputStream;
 
 final class ShaderLibrary implements TouchControls.ShaderMenu {
     /** Where the chosen preset goes: live() - a choice is used at once; use() - the .slangp path, "" for none. */
-    interface Target { boolean live(); void use(String path); }
+    interface Target {
+        boolean live();
+        void use(String path);
+        /** True while the renderer builds (compiles) the chosen preset. */
+        default boolean compiling() { return false; }
+    }
 
     static final int PICK_ZIP = 0x5ad;
     private static final String TAG = "ShaderHost";
@@ -44,6 +49,30 @@ final class ShaderLibrary implements TouchControls.ShaderMenu {
         this.activity = activity;
         this.touch = touch;
         this.target = target;
+        watchCompile();
+    }
+
+    // ---------------------------------------------------------------- the compile dialog
+
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private boolean compileShown;
+
+    /** While the renderer compiles a preset (the game's picture stands still meanwhile): the progress dialog. */
+    private void watchCompile() {
+        handler.postDelayed(new Runnable() {
+            @Override public void run() {
+                boolean c = false;
+                try { c = target.compiling(); } catch (Throwable ignored) { }
+                if (c && !importing) {
+                    touch.showProgress("Shader", "Compiling the shader " + current() + "...", -1f);
+                    compileShown = true;
+                } else if (compileShown && !importing) {
+                    touch.hideProgress();
+                    compileShown = false;
+                }
+                handler.postDelayed(this, 150);
+            }
+        }, 150);
     }
 
     static File folder(Context c) { return new File(c.getExternalFilesDir(null), "shaders"); }
@@ -148,7 +177,7 @@ final class ShaderLibrary implements TouchControls.ShaderMenu {
     private void importZip(final Uri uri) {
         importing = true;
         touch.refreshPage();
-        toast("Importing the shader pack...");
+        touch.showProgress("Shader pack", "Reading the file...", -1f);
         new Thread(() -> {
             String message;
             File target = folder(activity);
@@ -178,6 +207,7 @@ final class ShaderLibrary implements TouchControls.ShaderMenu {
             final String m = message;
             new Handler(Looper.getMainLooper()).post(() -> {
                 importing = false;
+                touch.hideProgress();
                 toast(m);
                 touch.refreshPage();
             });
@@ -188,23 +218,34 @@ final class ShaderLibrary implements TouchControls.ShaderMenu {
      *  number of .slangp presets. */
     private int unzip(Uri uri, File dir) throws IOException {
         String prefix = null;
+        int total = 0;
         try (InputStream in = activity.getContentResolver().openInputStream(uri); ZipInputStream z = new ZipInputStream(in)) {
             ZipEntry e;
             while ((e = z.getNextEntry()) != null) {
+                total++;
                 String n = e.getName();
                 int slash = n.indexOf('/');
                 String first = slash > 0 ? n.substring(0, slash + 1) : "";
                 if (prefix == null) prefix = first;
-                else if (!prefix.equals(first)) { prefix = ""; break; }
+                else if (!prefix.equals(first)) prefix = "";
             }
         }
         if (prefix == null) prefix = "";
         int presets = 0;
         String root = dir.getCanonicalPath() + File.separator;
         byte[] buf = new byte[64 * 1024];
+        int done = 0;
+        long shown = 0;
         try (InputStream in = activity.getContentResolver().openInputStream(uri); ZipInputStream z = new ZipInputStream(in)) {
             ZipEntry e;
             while ((e = z.getNextEntry()) != null) {
+                done++;
+                long now = System.currentTimeMillis();
+                if (now - shown > 100 || done == total) {
+                    shown = now;
+                    final int d = done, t = total;
+                    handler.post(() -> touch.showProgress("Shader pack", "Unpacking shaders: file " + d + " of " + t, t > 0 ? d / (float) t : -1f));
+                }
                 String n = e.getName();
                 if (!prefix.isEmpty() && n.startsWith(prefix)) n = n.substring(prefix.length());
                 if (n.isEmpty()) continue;

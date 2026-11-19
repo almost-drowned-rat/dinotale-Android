@@ -46,6 +46,7 @@ public final class TouchControls {
     private static final long POLL_MS = 200, ICON_SHOW_MS = 4000;
     private final TouchOverlay overlay;
     private final SideMenu menu;
+    private final Progress95 progress;
     private final Icon icon;
     private final GameState game;
     private final Activity activity;
@@ -93,6 +94,8 @@ public final class TouchControls {
         lp.topMargin = (int) (8 * dp);
         root.addView(icon, lp);
         root.addView(menu, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        progress = new Progress95(a);
+        root.addView(progress, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         icon.setOnClickListener(v -> iconTapped());
         overlay.setOnVisibility(this::updateIcon);
         menu.setOnClosed(() -> { setTouchable(overlay.isEditing()); updateIcon(); });
@@ -162,6 +165,10 @@ public final class TouchControls {
 
     /** Adds "Shader ›" with its own pages to the menu (ports with ShaderLibrary). */
     void setShaderMenu(ShaderMenu m) { shaderMenu = m; }
+
+    /** A progress dialog over the game (Progress95, Orta's setup look); fraction < 0: unknown. UI thread. */
+    void showProgress(String title, String status, float fraction) { progress.bringToFront(); progress.set(title, status, fraction); }
+    void hideProgress() { progress.hide(); }
 
     /** For ShaderMenu pages: open a sub-page, rebuild the current one (values changed). */
     void pushPage(SideMenu.Page p) { menu.push(p); }

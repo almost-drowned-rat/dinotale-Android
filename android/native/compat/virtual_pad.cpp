@@ -95,6 +95,11 @@ VP_JNI jboolean JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_nat
 // The shader the menu Back opens chose (ShaderLibrary.java; src/main/display_options.cpp).
 #ifdef DT_SHADER_PRESETS
 void dinotale_shader_set_path(const char* path);
+bool dinotale_shader_compiling();
+
+VP_JNI jboolean JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_nativeShaderCompiling(JNIEnv*, jclass) {
+    return dinotale_shader_compiling() ? JNI_TRUE : JNI_FALSE;
+}
 
 VP_JNI void JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_nativeShaderSetPath(JNIEnv* env, jclass, jstring path) {
     const char* p = path != nullptr ? env->GetStringUTFChars(path, nullptr) : nullptr;

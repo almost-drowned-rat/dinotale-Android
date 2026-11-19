@@ -1,5 +1,6 @@
 // RetroArch slang shader presets for RT64's present, see rt64_shader_pass.h.
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include <atomic>
 #include "rt64_shader_pass.h"
 
 #include <cstdio>
@@ -158,6 +159,12 @@ namespace RT64 {
         return status;
     }
 
+    static std::atomic<bool> compilingNow{ false };
+
+    bool shaderCompiling() {
+        return compilingNow.load();
+    }
+
     bool shaderRuntimeAvailable() {
         return loadLibrashader();
     }
@@ -251,6 +258,10 @@ namespace RT64 {
         }
 
         if (impl->chain == nullptr) {
+            struct Busy {
+                Busy() { compilingNow = true; }
+                ~Busy() { compilingNow = false; }
+            } busy;
             libra_shader_preset_t librashaderPreset = nullptr;
             const auto presetU8 = preset.u8string();   // std::string in C++17 (RT64), std::u8string in C++20
             const std::string presetUtf8(presetU8.begin(), presetU8.end());

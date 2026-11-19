@@ -20,6 +20,9 @@ namespace RT64 {
     // A line for the settings: why there is no shader ("librashader wasn't found", the preset's error), or empty.
     std::string getShaderStatus();
 
+    // True while a preset's filter chain is being built (Android: the progress dialog). Any thread.
+    bool shaderCompiling();
+
     // Whether librashader could be loaded at all (the settings grey the shader choice out without it).
     bool shaderRuntimeAvailable();
 

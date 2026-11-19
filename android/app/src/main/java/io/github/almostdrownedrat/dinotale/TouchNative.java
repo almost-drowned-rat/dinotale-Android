@@ -13,4 +13,6 @@ final class TouchNative {
     static native boolean nativeMenuOpen();
     /** The RetroArch shader preset to draw with (a .slangp path; "" for none). */
     static native void nativeShaderSetPath(String path);
+    /** RT64 is building (compiling) the preset's filter chain right now. */
+    static native boolean nativeShaderCompiling();
 }

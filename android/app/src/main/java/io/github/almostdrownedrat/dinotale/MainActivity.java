@@ -190,6 +190,7 @@ public class MainActivity extends SDLActivity {
             final ShaderLibrary.Target rt64 = new ShaderLibrary.Target() {
                 @Override public boolean live() { return true; }
                 @Override public void use(String path) { TouchNative.nativeShaderSetPath(path); }
+                @Override public boolean compiling() { return TouchNative.nativeShaderCompiling(); }
             };
             shaderLibrary = new ShaderLibrary(this, touch, rt64);
             touch.setShaderMenu(shaderLibrary);
@@ -301,6 +302,12 @@ public class MainActivity extends SDLActivity {
 
         final Uri uri = uris.size() == 1 ? uris.get(0) : null;
         final Context appContext = getApplicationContext();
+        // the progress dialog in Orta's setup look (Progress95) while the file is copied / installed
+        if (touch != null && !uris.isEmpty()) {
+            touch.showProgress("DinoTale", kind == KIND_ROM ? "Copying and checking your ROM..."
+                    : kind == KIND_MOD ? "Copying " + uris.size() + (uris.size() == 1 ? " mod..." : " mods...")
+                    : "Installing the GPU driver...", -1f);
+        }
         new Thread(() -> {
             boolean ok = false;
             String payload;
@@ -343,6 +350,7 @@ public class MainActivity extends SDLActivity {
 
             final boolean fOk = ok;
             final String fPayload = payload;
+            runOnUiThread(() -> { if (touch != null) touch.hideProgress(); });
             try {
                 nativeOnFilePicked(kind, fOk, fPayload);
             } catch (UnsatisfiedLinkError e) {
