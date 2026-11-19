@@ -13,7 +13,6 @@
 #include "ultramodern/config.hpp"
 #include "rt64_screen_filter.h"
 #ifdef DT_SHADER_PRESETS
-#include <atomic>
 #include <filesystem>
 #include "rt64_shader_pass.h"
 #endif
@@ -72,7 +71,10 @@ namespace {
 std::filesystem::path dinotale_user_shader_dir();
 
 void dinotale_add_display_options(recomp::config::Config &config) {
-#ifdef DT_SHADER_PRESETS
+#if defined(DT_SHADER_PRESETS) && defined(__ANDROID__)
+    // Android: the shaders are picked from the player's own packs in the menu Back opens (ShaderLibrary.java,
+    // dinotale_shader_set_path below) - no option here.
+#elif defined(DT_SHADER_PRESETS)
     config.add_enum_option(
         shader_option,
         "Shader",
@@ -84,12 +86,7 @@ void dinotale_add_display_options(recomp::config::Config &config) {
         "pixel-art upscalers that smooth the edges of the game's 240p picture. "
         "<recomp-color primary>Custom</recomp-color>: your own preset, <b>shaders/custom.slangp</b> (see the README).",
         shader_options,
-        ShaderOff,
-#ifdef __ANDROID__
-        true    // on Android the shader is chosen in the menu Back opens (dinotale_shader_* below, TouchControls)
-#else
-        false
-#endif
+        ShaderOff
     );
 #else
     config.add_enum_option(
@@ -134,36 +131,21 @@ void dinotale_add_display_options(recomp::config::Config &config) {
     );
 }
 
-#ifdef DT_SHADER_PRESETS
-// The shader choice for other menus (Android: the menu Back opens, through JNI in virtual_pad.cpp). A choice is
-// handed over here and applied - and saved - on the next VI, on the thread that reads the option anyway.
-static std::atomic<int> pending_shader{ -1 };
-static std::atomic<int> current_shader{ 0 };
-
-int dinotale_shader_count() { return static_cast<int>(shader_options.size()); }
-const char* dinotale_shader_name(int i) {
-    return i >= 0 && i < static_cast<int>(shader_options.size()) ? shader_options[i].name.c_str() : "";
-}
-int dinotale_shader_get() {
-    int p = pending_shader.load();
-    return p >= 0 ? p : current_shader.load();
-}
-void dinotale_shader_set(int i) {
-    if (i >= 0 && i < static_cast<int>(shader_options.size())) pending_shader.store(i);
+#if defined(DT_SHADER_PRESETS) && defined(__ANDROID__)
+// Android: the preset the menu Back opens chose (a .slangp of an imported pack, "" for none; virtual_pad.cpp's JNI).
+void dinotale_shader_set_path(const char* path) {
+    RT64::setShaderPreset(path != nullptr ? std::filesystem::path(path) : std::filesystem::path());
 }
 #endif
 
 // Called every VI: hands the applied settings to the renderer.
 void dinotale_update_display_options() {
     recomp::config::Config &config = recompui::config::get_config(recompui::config::graphics::id);
-#ifdef DT_SHADER_PRESETS
-    if (int p = pending_shader.exchange(-1); p >= 0) {
-        config.set_option_value(shader_option, static_cast<uint32_t>(p));
-        config.save_config();
-    }
+#if defined(DT_SHADER_PRESETS) && defined(__ANDROID__)
+    // the shader comes from the menu Back opens (dinotale_shader_set_path)
+#elif defined(DT_SHADER_PRESETS)
     const auto shader = config.get_option_value(shader_option);
     if (const uint32_t* value = std::get_if<uint32_t>(&shader)) {
-        current_shader.store(static_cast<int>(*value));
         std::filesystem::path preset;
         if (*value == ShaderCustom) {
             preset = dinotale_user_shader_dir() / "custom.slangp";

@@ -91,6 +91,11 @@ The `shaders` folder is next to the game, on Android in `Android/data/io.github.
 (reachable over USB). The desktop builds need `librashader.so` / `librashader.dll` next to the game; without it the
 Shader setting does nothing. They replace the earlier Screen Filter setting.
 
+**On Android** the shaders are chosen in the menu Back opens instead (Settings has no Shader option there): Shader >
+Import shader pack (.zip) takes a slang shader pack such as libretro/slang-shaders' "Download ZIP", unpacks it into
+`Android/data/io.github.almostdrownedrat.dinotale/files/shaders` and lists its folders and presets to pick from;
+a choice is used at once. The presets shipped for the desktop aren't used there - a pack offers far more.
+
 ## Android
 
 The `android` branch of this fork builds an APK for arm64 Android devices with Vulkan (Android 8+), made for

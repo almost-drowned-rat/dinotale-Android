@@ -50,6 +50,9 @@ public class MainActivity extends SDLActivity {
     /** The touch buttons, their icon and menu (TouchControls.java). */
     private TouchControls touch;
 
+    /** The RetroArch shader packs and the choice (ShaderLibrary). */
+    private ShaderLibrary shaderLibrary;
+
     @Override
     public boolean dispatchKeyEvent(android.view.KeyEvent e) {
         if (touch != null && touch.onKey(e)) return true;
@@ -183,12 +186,14 @@ public class MainActivity extends SDLActivity {
                     onNativeKeyUp(android.view.KeyEvent.KEYCODE_BACK);
                 }
             });
-            // the RetroArch shaders (librashader) are chosen in this menu, not in the game's settings
-            touch.setShaders(new TouchControls.Shaders() {
-                @Override public String[] names() { return TouchNative.nativeShaderNames(); }
-                @Override public int current() { return TouchNative.nativeShaderGet(); }
-                @Override public void select(int i) { TouchNative.nativeShaderSet(i); }
-            });
+            // the RetroArch shaders (librashader, drawn by RT64): the player's own packs, picked in this menu
+            final ShaderLibrary.Target rt64 = new ShaderLibrary.Target() {
+                @Override public boolean live() { return true; }
+                @Override public void use(String path) { TouchNative.nativeShaderSetPath(path); }
+            };
+            shaderLibrary = new ShaderLibrary(this, touch, rt64);
+            touch.setShaderMenu(shaderLibrary);
+            try { rt64.use(ShaderLibrary.chosen(this)); } catch (UnsatisfiedLinkError ignored) { }
         }
 
         // SurfaceHolder.Callback para o ciclo de vida da Surface nativa.
@@ -257,6 +262,7 @@ public class MainActivity extends SDLActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (shaderLibrary != null && shaderLibrary.onActivityResult(requestCode, resultCode, data)) return;
 
         final int kind;
         switch (requestCode) {

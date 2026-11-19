@@ -10,7 +10,7 @@
 // small icon at the top centre opens the same menu by touch: shown with the buttons; with the buttons off or
 // hidden for a controller, any touch shows it for a few seconds.
 // The menu: Back to the game, Game settings and controller (the game's own menu, where the controller is set up),
-// Shader (ports with RetroArch shaders: Off / CRT / ...),
+// Shader (ports with RetroArch shaders: ShaderLibrary's packs and presets),
 // Touch controls (as in Orta Recompiled for Android: Touch buttons Automatic / Always / Off, Move and resize, Button
 // size, Show / hide single buttons, Opacity, Stick sensitivity, Reset layout), Exit game (right away; the activity
 // is finished so SDL tells the game to quit and it can write its saves; the process ends a few seconds later).
@@ -40,8 +40,8 @@ public final class TouchControls {
      *  opening its own menu (settings, controller set-up). */
     public interface GameState { boolean running(); boolean menuOpen(); void openGameMenu(); }
 
-    /** A port with RetroArch shaders: their names (the first is "Off"), the current one, choosing one. */
-    public interface Shaders { String[] names(); int current(); void select(int index); }
+    /** A port whose shaders are browsed in their own pages (ShaderLibrary): the current one's name and the page. */
+    interface ShaderMenu { String current(); SideMenu.Page page(); }
 
     private static final long POLL_MS = 200, ICON_SHOW_MS = 4000;
     private final TouchOverlay overlay;
@@ -49,7 +49,7 @@ public final class TouchControls {
     private final Icon icon;
     private final GameState game;
     private final Activity activity;
-    private Shaders shaders;
+    private ShaderMenu shaderMenu;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private long iconUntil;
     private boolean lastRunning, lastMenu;
@@ -160,8 +160,12 @@ public final class TouchControls {
 
     public boolean isMenuOpen() { return menu.isOpen(); }
 
-    /** Adds the shader choice to the menu (ports with RetroArch shaders). */
-    public void setShaders(Shaders s) { shaders = s; }
+    /** Adds "Shader ›" with its own pages to the menu (ports with ShaderLibrary). */
+    void setShaderMenu(ShaderMenu m) { shaderMenu = m; }
+
+    /** For ShaderMenu pages: open a sub-page, rebuild the current one (values changed). */
+    void pushPage(SideMenu.Page p) { menu.push(p); }
+    void refreshPage() { if (menu.isOpen()) menu.refresh(); }
 
     private void updateIcon() {
         boolean show = overlay.isGameRunning() && !menu.isOpen() && !overlay.isGameMenuOpen()
@@ -280,22 +284,10 @@ public final class TouchControls {
                         try { game.openGameMenu(); } catch (UnsatisfiedLinkError ignored) { }
                     }
                 });
-                if (shaders != null) {
-                    final String[] names;
-                    String[] n = null;
-                    try { n = shaders.names(); } catch (UnsatisfiedLinkError ignored) { }
-                    names = n;
-                    if (names != null && names.length > 0) {
-                        l.add(new SideMenu.Item("Shader") {        // left / right or A steps through them
-                            @Override String value() {
-                                int c = shaders.current();
-                                return c >= 0 && c < names.length ? names[c] : "?";
-                            }
-                            @Override void step(int d) {
-                                shaders.select((shaders.current() + d + names.length) % names.length);
-                            }
-                        });
-                    }
+                if (shaderMenu != null) {
+                    l.add(new SideMenu.Item("Shader:  " + shaderMenu.current() + "  ›") {
+                        @Override void run() { menu.push(shaderMenu.page()); }
+                    });
                 }
                 l.add(new SideMenu.Item("Touch controls  ›") { @Override void run() { menu.push(touchPage()); } });
                 l.add(new SideMenu.Item("Exit game") { @Override void run() { exitGame(); } });
