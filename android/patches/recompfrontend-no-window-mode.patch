@@ -1,0 +1,12 @@
+--- a/recompui/src/config/ui_config_tab_graphics.cpp
++++ b/recompui/src/config/ui_config_tab_graphics.cpp
+@@ -343,6 +343,9 @@
+                 "Sets whether the game should display <recomp-color primary>Windowed</recomp-color> or <recomp-color primary>Fullscreen</recomp-color>. You can also use <recomp-color primary>F11</recomp-color> or <recomp-color primary>Alt + Enter</recomp-color> to toggle this option.",
+                 window_mode_options,
+                 wm_default()
++#ifdef __ANDROID__
++                , true  // Android ports: the app is always full screen, so no window mode to choose
++#endif
+             );
+ 
+             config.add_enum_option(
