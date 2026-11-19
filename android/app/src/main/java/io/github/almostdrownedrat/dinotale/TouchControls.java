@@ -6,7 +6,8 @@
 // on a button or the icon goes to the controls, everything else to SDL (touch as a mouse). With the menu or the
 // layout editor open the panel takes touches itself.
 // Android's Back (key or gesture) opens the menu while the game runs - the same in every port, and fully usable
-// with a controller (D-pad / stick, A, B). With the game's own menu open, Back goes to the game and closes it. The
+// with a controller (D-pad / stick, A, B). With the game's own menu open, Back closes that (GameState.openGameMenu
+// toggles it; any Back key, also a handheld's own, which arrives as a controller button). The
 // small icon at the top centre opens the same menu by touch: shown with the buttons; with the buttons off or
 // hidden for a controller, any touch shows it for a few seconds.
 // The menu: Back to the game, Game settings and controller (the game's own menu, where the controller is set up),
@@ -38,7 +39,7 @@ import java.util.List;
 public final class TouchControls {
     /** What the game says: is it running (not its launcher), is its own menu open (polled on the UI thread); and
      *  opening its own menu (settings, controller set-up). */
-    public interface GameState { boolean running(); boolean menuOpen(); void openGameMenu(); }
+    public interface GameState { boolean running(); boolean menuOpen(); void openGameMenu(); }   // openGameMenu toggles
 
     /** A port whose shaders are browsed in their own pages (ShaderLibrary): the current one's name and the page. */
     interface ShaderMenu { String current(); SideMenu.Page page(); SideMenu.Page paramsPage(); }
@@ -211,9 +212,9 @@ public final class TouchControls {
     /** Whether Back is for the menu here: not in the game's launcher, not while the game's own menu is open. */
     private boolean backIsOurs() {
         if (menu.isOpen() || overlay.isEditing()) return true;
-        boolean running = false, gameMenu = false;
-        try { running = game.running(); gameMenu = game.menuOpen(); } catch (UnsatisfiedLinkError ignored) { }
-        return running && !gameMenu;
+        boolean running = false;
+        try { running = game.running(); } catch (UnsatisfiedLinkError ignored) { }
+        return running;
     }
 
     /** Android's Back (from onKey, or the activity's OnBackInvokedCallback for the back gesture). True = handled:
@@ -223,6 +224,14 @@ public final class TouchControls {
         if (menu.isOpen()) { menu.close(); return true; }   // Back closes the whole menu (B goes back one level)
         if (overlay.isEditing()) { overlay.setEditing(false); setTouchable(false); updateIcon(); return true; }
         if (!backIsOurs()) return false;
+        // With the game's own menu open, Back closes it - also for a handheld's own Back key, which arrives as a
+        // controller button the game's menu doesn't close on (SDL makes it the pad's Select / Back).
+        boolean gameMenu = false;
+        try { gameMenu = game.menuOpen(); } catch (UnsatisfiedLinkError ignored) { }
+        if (gameMenu) {
+            try { game.openGameMenu(); } catch (UnsatisfiedLinkError ignored) { }   // toggles: closes it
+            return true;
+        }
         openMenu();
         return true;
     }
