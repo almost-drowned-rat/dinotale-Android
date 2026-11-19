@@ -13,6 +13,12 @@
 cmake_minimum_required(VERSION 3.22)
 project(DinoTaleAndroid LANGUAGES C CXX)
 
+# Android: build paths in the binaries (__FILE__ in asserts / logs, debug info) start with ~ instead of the build
+# machine's home folder, so the APK names no user.
+if(ANDROID AND DEFINED ENV{HOME})
+    add_compile_options("-ffile-prefix-map=$ENV{HOME}=~")
+endif()
+
 set(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 set(RT64_DIR        "${REPO_ROOT}/lib/rt64")
 set(NMR_DIR         "${REPO_ROOT}/lib/N64ModernRuntime")

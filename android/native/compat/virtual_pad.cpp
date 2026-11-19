@@ -135,3 +135,24 @@ VP_JNI jfloatArray JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_
     env->SetFloatArrayRegion(a, 0, 3, s);
     return a;
 }
+
+// Settings > Android Options: opens the shader pages of the menu Back opens (MainActivity.openShaderMenu:
+// 0 = Shader, 1 = Shader parameters). Any thread.
+#include <SDL.h>
+void android_open_shader_menu(int which) {
+    JNIEnv* env = static_cast<JNIEnv*>(SDL_AndroidGetJNIEnv());
+    jobject activity = static_cast<jobject>(SDL_AndroidGetActivity());
+    if (env == nullptr || activity == nullptr) {
+        return;
+    }
+    jclass cls = env->GetObjectClass(activity);
+    jmethodID method = env->GetMethodID(cls, "openShaderMenu", "(I)V");
+    if (method != nullptr) {
+        env->CallVoidMethod(activity, method, which);
+    }
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+    }
+    env->DeleteLocalRef(cls);
+    env->DeleteLocalRef(activity);
+}

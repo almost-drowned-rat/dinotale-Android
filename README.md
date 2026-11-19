@@ -91,14 +91,14 @@ The `shaders` folder is next to the game, on Android in `Android/data/io.github.
 (reachable over USB). The desktop builds need `librashader.so` / `librashader.dll` next to the game; without it the
 Shader setting does nothing. They replace the earlier Screen Filter setting.
 
-**On Android** the shaders are chosen in the menu Back opens instead (Settings has no Shader option there): Shader >
-Import shader pack (.zip) takes a slang shader pack such as libretro/slang-shaders' "Download ZIP", unpacks it into
-`Android/data/io.github.almostdrownedrat.dinotale/files/shaders` and lists its folders and presets to pick from;
-a choice is used at once. The presets shipped for the desktop aren't used there - a pack offers far more.
-
-Settings > Graphics > **Shader Resolution** sets the size of the game's picture the shader works on:
-**Original** (the N64's 240 lines, as in RetroArch - the look the shaders were made for, and by far the lightest;
-crt-royale runs at full speed on an Odin 2 Portal), **2x**, or **Full** (the window's size; heavy shaders get slow).
+**On Android** the shaders are in Settings > **Android Options** (after Graphics) instead: **Shader...** imports a
+slang shader pack (.zip, such as libretro/slang-shaders' "Download ZIP") into
+`Android/data/io.github.almostdrownedrat.dinotale/files/shaders` and lists its folders and presets to pick from (a
+choice is used at once), **Shader parameters...** changes the active preset's settings (kept per preset), and
+**Shader Resolution** sets the size of the game's picture the shader works on: **Original** (the N64's 240 lines,
+as in RetroArch - the look the shaders were made for, and by far the lightest; crt-royale runs at full speed on an
+Odin 2 Portal), **2x**, or **Full** (the window's size; heavy shaders get slow). The presets shipped for the desktop
+aren't used there - a pack offers far more. The same tab has **GPU Driver (Turnip)...**.
 
 ## Android
 

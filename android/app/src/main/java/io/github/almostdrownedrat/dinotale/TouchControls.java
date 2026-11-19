@@ -60,6 +60,7 @@ public final class TouchControls {
     private final GameState game;
     private final Activity activity;
     private ShaderMenu shaderMenu;
+    private boolean shaderRows = true;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private long iconUntil;
     private boolean lastRunning, lastMenu;
@@ -198,7 +199,18 @@ public final class TouchControls {
     public boolean isMenuOpen() { return menu.isOpen(); }
 
     /** Adds "Shader ›" with its own pages to the menu (ports with ShaderLibrary). */
-    void setShaderMenu(ShaderMenu m) { shaderMenu = m; }
+    void setShaderMenu(ShaderMenu m) { setShaderMenu(m, true); }
+
+    /** inBackMenu false: the shader pages are opened from the game's own settings (openPage), not from rows here. */
+    void setShaderMenu(ShaderMenu m, boolean inBackMenu) { shaderMenu = m; shaderRows = inBackMenu; }
+
+    /** Opens the menu straight at a page (e.g. the shader pages from the game's settings). UI thread. */
+    void openPage(SideMenu.Page p) {
+        overlay.release();
+        setTouchable(true);
+        menu.open(p);
+        updateIcon();
+    }
 
     /** A progress dialog over the game (Progress95, Orta's setup look); fraction < 0: unknown. UI thread. */
     void showProgress(String title, String status, float fraction) { progress.bringToFront(); progress.set(title, status, fraction); }
@@ -333,7 +345,7 @@ public final class TouchControls {
                         try { game.openGameMenu(); } catch (UnsatisfiedLinkError ignored) { }
                     }
                 });
-                if (shaderMenu != null) {
+                if (shaderMenu != null && shaderRows) {
                     l.add(new SideMenu.Item("Shader:  " + shaderMenu.current() + "  ›") {
                         @Override void run() { menu.push(shaderMenu.page()); }
                     });

@@ -462,6 +462,9 @@ void show_android_gpu_driver_menu() {
 } // namespace
 #endif
 
+#ifdef __ANDROID__
+void android_open_shader_menu(int which);   // virtual_pad.cpp
+#endif
 extern std::vector<recomp::GameEntry> supported_games;  // defined below
 static void on_launcher_init(recompui::LauncherMenu* menu) {
     auto options = menu->init_game_options_menu(
@@ -631,6 +634,28 @@ int main(int argc, char** argv) {
     // Lossless Scaling frame generation needs the player's Windows Lossless.dll: not offered on Android.
     dinotale_add_frame_generation_options(graphics_tab);
 #endif
+#ifdef __ANDROID__
+    // Settings > Android Options (after Graphics): the shader resolution, the shader pages of the menu Back opens
+    // and the GPU driver.
+    {
+        recomp::config::Config &android_tab = recompui::config::create_config_tab("Android Options", "android_options", false);
+        android_tab.add_enum_option(
+            "shader_resolution",
+            "Shader Resolution",
+            "The size of the game's picture a RetroArch shader works on. "
+            "<recomp-color primary>Original</recomp-color>: the N64's 240 lines, as in RetroArch - the look the shaders "
+            "were made for (scanlines, CRT masks, pixel upscalers) and by far the lightest. "
+            "<recomp-color primary>2x</recomp-color>: twice that. "
+            "<recomp-color primary>Full</recomp-color>: the window's size - heavy shaders get slow.<br /><br />"
+            "<b>Shader...</b> imports shader packs (.zip) and picks a preset, <b>Shader parameters...</b> changes "
+            "the preset's settings, <b>GPU Driver (Turnip)...</b> installs a Vulkan driver (the app restarts).",
+            std::vector<recomp::config::ConfigOptionEnumOption>{ { 0, "Original" }, { 1, "2x", "2x" }, { 2, "Full" } },
+            0u);
+        recompui::config::add_option_button("shader_resolution", "Shader...", []() { android_open_shader_menu(0); });
+        recompui::config::add_option_button("shader_resolution", "Shader parameters...", []() { android_open_shader_menu(1); });
+        recompui::config::add_option_button("shader_resolution", "GPU Driver (Turnip)...", []() { show_android_gpu_driver_menu(); });
+    }
+#endif
     recompui::config::create_controls_tab();
     recompui::config::create_sound_tab();
     recompui::config::create_mods_tab();
@@ -694,11 +719,6 @@ int main(int argc, char** argv) {
 
     // The launcher screen: recompui's launcher with DinoTale's own scene and
     // layout (launcher.cpp, assets/launcher).
-#ifdef __ANDROID__
-    // Settings > Graphics: the GPU driver (Turnip, adrenotools) under HUD Placement (lib-patches/RecompFrontend/0004).
-    recompui::config::add_option_button(recompui::config::graphics::options::hr_option, "GPU Driver (Turnip)...",
-                                        []() { show_android_gpu_driver_menu(); });
-#endif
     recompui::register_launcher_init_callback(on_launcher_init);
     recompui::register_launcher_update_callback(dinotale::launcher_update);
 

@@ -116,7 +116,7 @@ void dinotale_add_display_options(recomp::config::Config &config) {
         0
     );
 
-#ifdef DT_SHADER_PRESETS
+#if defined(DT_SHADER_PRESETS) && !defined(__ANDROID__)   // Android: Settings > Android Options (main.cpp)
     config.add_enum_option(
         shader_resolution_option,
         "Shader Resolution",
@@ -183,7 +183,11 @@ void dinotale_update_display_options() {
 #endif
 
 #ifdef DT_SHADER_PRESETS
+#ifdef __ANDROID__
+    const auto shader_resolution = recompui::config::get_config("android_options").get_option_value(shader_resolution_option);
+#else
     const auto shader_resolution = config.get_option_value(shader_resolution_option);
+#endif
     if (const uint32_t* value = std::get_if<uint32_t>(&shader_resolution)) {
         RT64::setShaderResolution(static_cast<int>(*value));
     }

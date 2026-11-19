@@ -1,0 +1,56 @@
+--- a/recompui/include/recompui/config.h
++++ b/recompui/include/recompui/config.h
+@@ -162,7 +162,8 @@
+             std::string label;
+             std::function<void()> callback;
+         };
+-        const OptionButton *get_option_button(const std::string &option_id);
++        // The buttons of an option, in the order they were added (none: nullptr).
++        const std::vector<OptionButton> *get_option_buttons(const std::string &option_id);
+ 
+         // Internal use only.
+         void init_modal();
+--- a/recompui/src/config/ui_config.cpp
++++ b/recompui/src/config/ui_config.cpp
+@@ -29,13 +29,13 @@
+         throw std::runtime_error("Could not find config with ID '" + id + "'.");
+     }
+ 
+-    static std::unordered_map<std::string, config::OptionButton> option_buttons;
++    static std::unordered_map<std::string, std::vector<config::OptionButton>> option_buttons;
+ 
+     void config::add_option_button(const std::string &option_id, const std::string &label, std::function<void()> callback) {
+-        option_buttons[option_id] = config::OptionButton{ label, std::move(callback) };
++        option_buttons[option_id].push_back(config::OptionButton{ label, std::move(callback) });
+     }
+ 
+-    const config::OptionButton *config::get_option_button(const std::string &option_id) {
++    const std::vector<config::OptionButton> *config::get_option_buttons(const std::string &option_id) {
+         auto it = option_buttons.find(option_id);
+         return it != option_buttons.end() ? &it->second : nullptr;
+     }
+--- a/recompui/src/config/ui_config_page_options_menu.cpp
++++ b/recompui/src/config/ui_config_page_options_menu.cpp
+@@ -240,13 +240,15 @@
+             element->update_hidden();
+             config_option_elements.push_back(element);
+ 
+-            // A button added for this option (config::add_option_button).
+-            if (const config::OptionButton *option_button = recompui::config::get_option_button(config_option.id)) {
+-                Button *button = context.create_element<Button>(body_left_scroll, option_button->label, ButtonStyle::Secondary, ButtonSize::Small);
+-                button->set_width(240.0f);
+-                button->set_margin_bottom(16.0f);
+-                std::function<void()> callback = option_button->callback;
+-                button->add_pressed_callback([callback]() { callback(); });
++            // The buttons added for this option (config::add_option_button).
++            if (const std::vector<config::OptionButton> *option_buttons = recompui::config::get_option_buttons(config_option.id)) {
++                for (const config::OptionButton &option_button : *option_buttons) {
++                    Button *button = context.create_element<Button>(body_left_scroll, option_button.label, ButtonStyle::Secondary, ButtonSize::Medium);
++                    button->set_width(400.0f);
++                    button->set_margin_bottom(16.0f);
++                    std::function<void()> callback = option_button.callback;
++                    button->add_pressed_callback([callback]() { callback(); });
++                }
+             }
+         }
+     }

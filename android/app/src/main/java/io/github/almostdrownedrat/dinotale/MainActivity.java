@@ -196,7 +196,7 @@ public class MainActivity extends SDLActivity {
                 @Override public void setParam(String name, float value) { TouchNative.nativeShaderSetParam(name, value); }
             };
             shaderLibrary = new ShaderLibrary(this, touch, rt64);
-            touch.setShaderMenu(shaderLibrary);
+            touch.setShaderMenu(shaderLibrary, false);   // opened from Settings > Android Options
             try {
                 String chosen = ShaderLibrary.chosen(this);
                 rt64.use(chosen);
@@ -736,6 +736,16 @@ public class MainActivity extends SDLActivity {
         activity.runOnUiThread(() -> {
             if (!activity.isFinishing()) {
                 activity.finish();
+            }
+        });
+    }
+
+    /** Settings > Android Options (native, virtual_pad.cpp): 0 = the Shader page, 1 = Shader parameters. */
+    @SuppressWarnings("unused")
+    public void openShaderMenu(final int which) {
+        runOnUiThread(() -> {
+            if (touch != null && shaderLibrary != null) {
+                touch.openPage(which == 0 ? shaderLibrary.page() : shaderLibrary.paramsPage());
             }
         });
     }
