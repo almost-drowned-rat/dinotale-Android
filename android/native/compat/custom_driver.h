@@ -33,6 +33,9 @@ namespace dk64driver {
  */
 std::string status_text();
 
+/* The driver in use, for Settings > Android Options: the custom driver's name or "System driver". */
+std::string active_name();
+
 /*
  * Remove a seleção atual (files/driver/selected.txt) e invalida o estado em
  * cache para que o próximo ensure recarregue (caindo no driver do sistema).

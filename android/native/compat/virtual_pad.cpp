@@ -105,10 +105,57 @@ VP_JNI jstring JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_nati
     return env->NewStringUTF(dinotale_shader_params().c_str());
 }
 
+
+// What Settings > Android Options shows beside its buttons: the preset in use and the parameters set for it
+// (the player's saved values are set again on every start, so "set" means "changed").
+#include <mutex>
+#include <set>
+namespace {
+std::mutex shader_info_mutex;
+std::string shader_info_path;
+std::set<std::string> shader_info_params;
+void shader_info_set_path(const char* p) {
+    std::scoped_lock lock(shader_info_mutex);
+    std::string path = p != nullptr ? p : "";
+    if (path != shader_info_path) {
+        shader_info_path = path;
+        shader_info_params.clear();
+    }
+}
+void shader_info_set_param(const char* name) {
+    std::scoped_lock lock(shader_info_mutex);
+    shader_info_params.insert(name);
+}
+}
+
+std::string android_shader_name() {
+    std::scoped_lock lock(shader_info_mutex);
+    if (shader_info_path.empty()) {
+        return "Off";
+    }
+    std::string name = shader_info_path.substr(shader_info_path.find_last_of('/') + 1);
+    if (name.size() > 7 && name.compare(name.size() - 7, 7, ".slangp") == 0) {
+        name.resize(name.size() - 7);
+    }
+    return name;
+}
+
+std::string android_shader_params_summary() {
+    std::scoped_lock lock(shader_info_mutex);
+    if (shader_info_path.empty()) {
+        return "-";
+    }
+    if (shader_info_params.empty()) {
+        return "Default";
+    }
+    return std::to_string(shader_info_params.size()) + " changed";
+}
+
 VP_JNI void JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_nativeShaderSetParam(JNIEnv* env, jclass, jstring name,
                                                                                          jfloat value) {
     const char* n = env->GetStringUTFChars(name, nullptr);
     dinotale_shader_set_param(n, value);
+    shader_info_set_param(n);
     env->ReleaseStringUTFChars(name, n);
 }
 
@@ -119,6 +166,7 @@ VP_JNI jboolean JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_nat
 VP_JNI void JNICALL Java_io_github_almostdrownedrat_dinotale_TouchNative_nativeShaderSetPath(JNIEnv* env, jclass, jstring path) {
     const char* p = path != nullptr ? env->GetStringUTFChars(path, nullptr) : nullptr;
     dinotale_shader_set_path(p != nullptr ? p : "");
+    shader_info_set_path(p);
     if (p != nullptr) {
         env->ReleaseStringUTFChars(path, p);
     }

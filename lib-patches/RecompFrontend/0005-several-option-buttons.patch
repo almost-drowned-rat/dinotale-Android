@@ -1,10 +1,25 @@
 --- a/recompui/include/recompui/config.h
 +++ b/recompui/include/recompui/config.h
-@@ -162,7 +162,8 @@
+@@ -155,14 +155,20 @@
+         recomp::config::Config &get_graphics_config();
+         recomp::config::Config &get_sound_config();
+ 
+-        // A button shown under an option (by its id) on its options page;
+-        // `callback` runs when it's pressed (on the UI thread).
+-        void add_option_button(const std::string &option_id, const std::string &label, std::function<void()> callback);
++        // A button shown with an option (by its id) on its options page: under it, or above it with `before`;
++        // `gap_before` leaves an empty line above it. `callback` runs when it's pressed (on the UI thread);
++        // `value`, if set, is shown beside the button and asked again every frame (keep it cheap).
+         struct OptionButton {
              std::string label;
              std::function<void()> callback;
++            std::function<std::string()> value;
++            bool before = false;
++            bool gap_before = false;
          };
 -        const OptionButton *get_option_button(const std::string &option_id);
++        void add_option_button(const std::string &option_id, const std::string &label, std::function<void()> callback);
++        void add_option_button(const std::string &option_id, OptionButton button);
 +        // The buttons of an option, in the order they were added (none: nullptr).
 +        const std::vector<OptionButton> *get_option_buttons(const std::string &option_id);
  
@@ -12,7 +27,7 @@
          void init_modal();
 --- a/recompui/src/config/ui_config.cpp
 +++ b/recompui/src/config/ui_config.cpp
-@@ -29,13 +29,13 @@
+@@ -29,13 +29,20 @@
          throw std::runtime_error("Could not find config with ID '" + id + "'.");
      }
  
@@ -21,17 +36,97 @@
  
      void config::add_option_button(const std::string &option_id, const std::string &label, std::function<void()> callback) {
 -        option_buttons[option_id] = config::OptionButton{ label, std::move(callback) };
-+        option_buttons[option_id].push_back(config::OptionButton{ label, std::move(callback) });
++        config::OptionButton button;
++        button.label = label;
++        button.callback = std::move(callback);
++        add_option_button(option_id, std::move(button));
      }
  
 -    const config::OptionButton *config::get_option_button(const std::string &option_id) {
++    void config::add_option_button(const std::string &option_id, config::OptionButton button) {
++        option_buttons[option_id].push_back(std::move(button));
++    }
++
 +    const std::vector<config::OptionButton> *config::get_option_buttons(const std::string &option_id) {
          auto it = option_buttons.find(option_id);
          return it != option_buttons.end() ? &it->second : nullptr;
      }
 --- a/recompui/src/config/ui_config_page_options_menu.cpp
 +++ b/recompui/src/config/ui_config_page_options_menu.cpp
-@@ -240,13 +240,15 @@
+@@ -1,10 +1,64 @@
+ #include "ui_config_page_options_menu.h"
+ #include "recompui/config.h"
+ #include "elements/ui_button.h"
++#include "elements/ui_label.h"
+ 
+ 
+ namespace recompui {
+ 
++    // The value beside an option button (config::OptionButton::value), asked again every frame.
++    class OptionButtonValue : public Label {
++        std::function<std::string()> value;
++        std::string shown;
++    protected:
++        std::string_view get_type_name() override { return "OptionButtonValue"; }
++        void process_event(const Event &e) override {
++            if (e.type == EventType::Update) {
++                std::string now = value();
++                if (now != shown) {
++                    shown = now;
++                    set_text(shown);
++                }
++                queue_update();
++            }
++        }
++    public:
++        OptionButtonValue(ResourceId rid, Element *parent, std::function<std::string()> value)
++            : Label(rid, parent, LabelStyle::Normal), value(std::move(value)) {
++            shown = this->value();
++            set_text(shown);
++            queue_update();
++        }
++    };
++
++    static void add_option_buttons(ContextId context, Element *parent, const std::string &option_id, bool before) {
++        const std::vector<config::OptionButton> *option_buttons = recompui::config::get_option_buttons(option_id);
++        if (option_buttons == nullptr) {
++            return;
++        }
++        for (const config::OptionButton &option_button : *option_buttons) {
++            if (option_button.before != before) {
++                continue;
++            }
++            Element *row = context.create_element<Element>(parent);
++            row->set_display(Display::Flex);
++            row->set_flex_direction(FlexDirection::Row);
++            row->set_align_items(AlignItems::Center);
++            row->set_margin_bottom(16.0f);
++            if (option_button.gap_before) {
++                row->set_margin_top(56.0f);
++            }
++            Button *button = context.create_element<Button>(row, option_button.label, ButtonStyle::Secondary, ButtonSize::Large);
++            button->set_width(480.0f);
++            std::function<void()> callback = option_button.callback;
++            button->add_pressed_callback([callback]() { callback(); });
++            if (option_button.value) {
++                Element *value = context.create_element<OptionButtonValue>(row, option_button.value);
++                value->set_margin_left(32.0f);
++            }
++        }
++    }
++
+ ConfigPageOptionsMenu::ConfigPageOptionsMenu(
+     ResourceId rid,
+     Element *parent,
+@@ -186,6 +240,7 @@
+         auto schema = config->get_config_schema();
+         for (size_t i = 0; i < schema.options.size(); i++) {
+             auto &config_option = schema.options[i];
++            add_option_buttons(context, body_left_scroll, config_option.id, true);
+             ConfigOptionElement *element = nullptr;
+             switch (config_option.type) {
+                 case recomp::config::ConfigOptionType::Enum: {
+@@ -240,14 +295,7 @@
              element->update_hidden();
              config_option_elements.push_back(element);
  
@@ -42,15 +137,8 @@
 -                button->set_margin_bottom(16.0f);
 -                std::function<void()> callback = option_button->callback;
 -                button->add_pressed_callback([callback]() { callback(); });
-+            // The buttons added for this option (config::add_option_button).
-+            if (const std::vector<config::OptionButton> *option_buttons = recompui::config::get_option_buttons(config_option.id)) {
-+                for (const config::OptionButton &option_button : *option_buttons) {
-+                    Button *button = context.create_element<Button>(body_left_scroll, option_button.label, ButtonStyle::Secondary, ButtonSize::Large);
-+                    button->set_width(480.0f);
-+                    button->set_margin_bottom(16.0f);
-+                    std::function<void()> callback = option_button.callback;
-+                    button->add_pressed_callback([callback]() { callback(); });
-+                }
-             }
+-            }
++            add_option_buttons(context, body_left_scroll, config_option.id, false);
          }
      }
+ }

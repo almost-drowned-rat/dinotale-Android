@@ -494,6 +494,12 @@ int dk64_adrenotools_custom_driver_active(void) {
 
 namespace dk64driver {
 
+std::string active_name() {
+    std::lock_guard<std::mutex> lock(g_stateMutex);
+    ensure_loaded_locked();
+    return g_state.active ? g_state.name : std::string{"System driver"};
+}
+
 std::string status_text() {
     std::lock_guard<std::mutex> lock(g_stateMutex);
     ensure_loaded_locked();

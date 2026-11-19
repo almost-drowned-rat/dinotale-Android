@@ -89,6 +89,7 @@ public final class TouchControls {
     private static final int OWNER_NONE = 0, OWNER_BUTTONS = 1, OWNER_ICON = 2, OWNER_GAME = 3;
     private int owner = OWNER_NONE;
     private boolean backDownOurs;
+    private final java.util.Set<Integer> menuKeys = new java.util.HashSet<>();   // keys pressed while the menu was open
 
     public TouchControls(Activity a, View anchor, TouchOverlay.Sink sink, GameState game) {
         this.game = game;
@@ -245,7 +246,14 @@ public final class TouchControls {
             if (e.getAction() == KeyEvent.ACTION_UP && backDownOurs) { backDownOurs = false; onBack(); return true; }
             return false;
         }
-        if (menu.isOpen()) return menu.onKey(e);
+        if (menu.isOpen()) {
+            // A key pressed before the menu opened (e.g. the game menu's button that opened it) is released into the
+            // game: swallowing that release left the game seeing the key held, and repeating it.
+            if (e.getAction() == KeyEvent.ACTION_DOWN) menuKeys.add(e.getKeyCode());
+            else if (e.getAction() == KeyEvent.ACTION_UP && !menuKeys.remove(e.getKeyCode())) return false;
+            return menu.onKey(e);
+        }
+        if (e.getAction() == KeyEvent.ACTION_UP && menuKeys.remove(e.getKeyCode())) return true;   // pressed in the menu
         if (fromGamepad(e.getSource()) && e.getKeyCode() != KeyEvent.KEYCODE_BACK) {
             if (overlay.shown() && overlay.getMode() == TouchOverlay.MODE_AUTO) android.util.Log.i("TouchControls", "controller key " + e.getKeyCode() + " from "
                 + (e.getDevice() != null ? e.getDevice().getName() : "?") + ": buttons hidden");

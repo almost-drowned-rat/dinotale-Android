@@ -6,6 +6,7 @@
 // Launcher/UI assets: the Exo 2 UI font, Noto Emoji and PromptFont (which
 // RecompFrontend loads itself), each with its license in assets/.
 
+#include <chrono>
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -464,6 +465,8 @@ void show_android_gpu_driver_menu() {
 
 #ifdef __ANDROID__
 void android_open_shader_menu(int which);   // virtual_pad.cpp
+std::string android_shader_name();          // virtual_pad.cpp
+std::string android_shader_params_summary();
 #endif
 extern std::vector<recomp::GameEntry> supported_games;  // defined below
 static void on_launcher_init(recompui::LauncherMenu* menu) {
@@ -650,10 +653,49 @@ int main(int argc, char** argv) {
             "<b>Shader...</b> imports shader packs (.zip) and picks a preset, <b>Shader parameters...</b> changes "
             "the preset's settings, <b>GPU Driver (Turnip)...</b> installs a Vulkan driver (the app restarts).",
             std::vector<recomp::config::ConfigOptionEnumOption>{ { 0, "Original" }, { 1, "2x", "2x" }, { 2, "Full" } },
-            0u);
-        recompui::config::add_option_button("shader_resolution", "Shader...", []() { android_open_shader_menu(0); });
-        recompui::config::add_option_button("shader_resolution", "Shader parameters...", []() { android_open_shader_menu(1); });
-        recompui::config::add_option_button("shader_resolution", "GPU Driver (Turnip)...", []() { show_android_gpu_driver_menu(); });
+            0u,
+            true);   // shown as a button (below)
+    }
+    // Settings > Android Options: Shader, Shader Resolution, Shader parameters, an empty line, GPU Driver - each a
+    // button with what's in use beside it (lib-patches/RecompFrontend/0005). Shader Resolution's
+    // option itself is hidden; its button goes through Original, 2x and Full.
+    {
+        using recompui::config::OptionButton;
+        auto add = [](const char *label, std::function<void()> callback, std::function<std::string()> value, bool before,
+                      bool gap_before) {
+            OptionButton button;
+            button.label = label;
+            button.callback = std::move(callback);
+            button.value = std::move(value);
+            button.before = before;
+            button.gap_before = gap_before;
+            recompui::config::add_option_button("shader_resolution", std::move(button));
+        };
+        static const char *const resolution_names[] = { "Original", "2x", "Full" };
+        auto resolution = []() -> uint32_t {
+            const auto value = recompui::config::get_config("android_options").get_option_value("shader_resolution");
+            const uint32_t *index = std::get_if<uint32_t>(&value);
+            return index != nullptr && *index < 3 ? *index : 0;
+        };
+        add("Shader...", []() { android_open_shader_menu(0); }, []() { return android_shader_name(); }, true, false);
+        add("Shader Resolution", [resolution]() {
+                recomp::config::Config &config = recompui::config::get_config("android_options");
+                config.set_option_value("shader_resolution", (resolution() + 1) % 3);
+                config.save_config();
+            }, [resolution]() { return std::string(resolution_names[resolution()]); }, false, false);
+        add("Shader parameters...", []() { android_open_shader_menu(1); }, []() { return android_shader_params_summary(); },
+            false, false);
+        add("GPU Driver (Turnip)...", []() { show_android_gpu_driver_menu(); }, []() {
+                // the driver's name comes from a file: asked once a second
+                static std::string name;
+                static std::chrono::steady_clock::time_point asked;
+                const auto now = std::chrono::steady_clock::now();
+                if (name.empty() || now - asked > std::chrono::seconds(1)) {
+                    name = dk64driver::active_name();
+                    asked = now;
+                }
+                return name;
+            }, false, true);
     }
 #endif
     recompui::config::create_controls_tab();
