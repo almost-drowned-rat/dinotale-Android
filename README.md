@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icon_256.png" alt="DinoTale for Android" width="160">
+</p>
+
 # DinoTale — Android
 
 The Android version of [DinoTale](https://github.com/wootbeer/dinotale) (Yoshi's Story, statically recompiled):
