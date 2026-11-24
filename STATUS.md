@@ -6,6 +6,90 @@ stand; this file is for finding out why something is the way it is.
 
 # Log
 
+## Round 58: Restart button
+
+**Request:** the Restart button Sin and Punishment Recompiled has.
+
+**Ported:** `RecompFrontend/0006` (snprecomp's 0023, applies unchanged) adds
+the header button between Quit and Close, a confirmation once the game has
+started, and a Restart choice in the quit prompt. `src/main/restart.cpp` sets
+the callback: it quits as Quit does and, right before the process ends (the
+end of main, or a fault while shutting down in the crash handler), starts the
+game again with the same command line in the same folder (CreateProcessW on
+Windows, posix_spawn on Linux). On Linux it starts the exe by its real path:
+through /proc/self/exe the new process was called "exe".
+
+**Checked:** from in game, Restart, confirm: the old process ended and a new
+DinoTale started with the same arguments (--play) at the title screen.
+
+## Round 57: Cheats and Hacks tabs
+
+**Request:** a Cheats tab with the game's secrets so they don't have to be
+earned or typed in, and a Hacks tab for GameShark codes.
+
+**Engine** (`src/main/cheats.cpp`): codes are applied once per presented frame
+on the game thread, from the hook before the framebuffer swap in
+func_80071974 (the one the UI pump already uses). Types 80/A0, 81/A1, 88/89
+(on the GameShark Button), D0-D3 conditions and 50 serial codes; DE, EE, F0,
+F1 and FF need nothing. Addresses go through the same byte (^3) and halfword
+(^2) swizzle as N64Recomp's MEM_B/MEM_H. Writes inside the game's own code
+(0x80000400-0x80082000) are dropped: the recompiled code doesn't run from
+N64 memory, so code-patching cheats (infinite eggs, infinite flutter, the
+all-Yoshi infinite health at 8102B780, walk through enemies, longer tongue)
+can't work. Custom Codes lists those when they're typed in.
+
+**Checked in game:**
+- 0x800F8DF7 is a bitmask of the Yoshis still around: 0x3F on a new game.
+  Setting 0xC0 as well put White and Black Yoshi on the Select Yoshi screen.
+  The Black and White Yoshi cheat ORs the two bits in, so it doesn't bring
+  back lost Yoshis the way Infinite Lives (0xFF) does.
+- Health bytes 0x800F8DB7 + 4n: 8 is a full flower.
+- 0x800F8DB3 is the current Yoshi (green, red, yellow, dark blue, light blue,
+  pink, white, black); written in a level the Yoshi changes on the spot, which
+  is what Yoshi Colour does in Practice (the Trial-mode trick works because
+  Practice keeps whatever is there).
+- All Fruit (880F89D3 001E) on the GameShark Button filled the fruit frame.
+
+**Not in the game:** the pause code "hold L, A, B, A, C-Up, Left"
+(invincibility, from a fan cheat list). The only function in the game that
+tests a button combination is the crash screen's (Fault_WaitButtonCombo), and
+pausing in 1-1 and entering the code changed nothing in the game's state.
+Purple Yoshi was cut before release. Infinite Health stands in for the first.
+
+## Round 55: portable by default, and command-line options
+
+**Request:** make portable mode the default, leaving installs that aren't
+portable as they are; command-line options for nearly every setting, going
+straight into the game and picking the ROM.
+
+**Portable** (`dinotale_use_portable_mode_by_default`, command_line.cpp):
+RecompFrontend uses the game's folder when `portable.txt` is in the working
+directory, else `%LOCALAPPDATA%\dinotale` / `~/.config/dinotale`. At start,
+with `portable.txt` next to the executable, the game moves to its folder (so
+it's found when started from elsewhere). Without it: if the usual folder
+exists and isn't empty, nothing changes; otherwise `portable.txt` is created
+next to the executable (if it can be written there) and the game moves to its
+folder. Not for Flatpak, macOS, or with APP_FOLDER_PATH set.
+
+**Command line** (command_line.cpp, `--help`): `--rom` (recomp::select_rom,
+archives too), `--play` (passes the runtime's `--game yoshisstory`), short
+names for the common settings, `--set <option>=<value>` for any option on the
+General, Graphics and Sound tabs, `--save-settings`, `--list-settings`.
+Settings are set after the saved ones load, the way Apply does it (graphics
+then handed to the renderer: `recompui::config::graphics::apply_config`,
+`RecompFrontend/0005`), for that run only unless saved. Enum values match a
+key, the name shown, or a key uniquely containing the text ("4x" for MSAA4X).
+On Windows (a GUI program in release) output goes to the console the game was
+started from; a bad `--rom` also shows a message box.
+
+**Checked** (Linux): --help; --list-settings; settings applied for the run and
+the files unchanged; --save-settings writes them; bad values and unknown
+options reported. A new install (empty home) started with --rom and --play:
+portable.txt and everything else in the game's folder, the launcher skipped,
+the title screen up. An existing install (~/.config/dinotale with a setting):
+that folder kept and its setting read, no portable.txt. Not built on Windows
+here (the console attach).
+
 ## Round 54: do the game threads spin while waiting? (no)
 
 **Question:** in BattleTanx: Global Assault Recompiled (round 188) the main
@@ -109,15 +193,38 @@ layer's x 0 and the game has art there, so the cover blacked it out.
 x 0, the level-start case the cover is for. (Expand still shows black in the
 extra strip left of a level's or area's start: no art there, issue #26.)
 
-## Open: 4-1's blue blocks (issue #28)
+## Round 56: 4-1's blue blocks rock and bob (issue #28)
 
-**Report:** in 4-1's treehouses (the long row near the end) the blue blocks
-wiggle as Yoshi walks and vanish at the edge of the 4:3 area in Expand.
+**Report:** in 4-1's treehouses the row of blue blocks rocks back and forth,
+bobs, and seems to clip into its neighbours (the reporter's guess: a rotation
+or wobble timer running on the block actor).
 
-**From the reporter's clip:** the blocks move in whole N64 pixels (4.25 and
-8.5 px per frame at 1080p) while the wall behind moves in quarter pixels (3.25,
-6.75): the same sprite-vs-background mismatch as #16, parked with it. The
-rightmost block vanishes when its centre passes about x = 368 (320 + 48) in the
+**Measured** on the reporter's 60 fps clip, frame by frame: with the camera
+still the blocks don't move at all, and their edges keep the same angle in
+every frame (no rotation). What changes while the camera moves is the spacing:
+neighbouring blocks move a whole N64 pixel at different times (gaps of 170,
+175, 170, 174 px at 1080p in one frame, 170, 175, 175, 173 in the next).
+
+**Cause:** the blocks are 64x32 images drawn in two 32-row strips with
+G_OBJRM_SHRINKSIZE, so `rt64/0021` puts them on whole pixels (Round 43). The
+treehouse draws everything zoomed out, so each block's scaled position has its
+own fraction of a pixel and each rounds at its own moment; vertically they
+rounded too while the wall behind moves in quarter pixels. At normal scale
+objects share the camera's fraction and round together, which is why it shows
+so much more here.
+
+**Fix** (`rt64/0026`): strip images drawn more than 5% away from their own
+size on both axes (the treehouse zoom) keep the edges the game gives them.
+Strips of one image share their edges exactly, so no seams (checked at 3x).
+Measured in the treehouse at 1280x720 while scrolling: before, the gap between
+two blocks jumped between 300 and 303 px and each moved in 3 px steps; after,
+they move smoothly and the gap stays within a pixel. 1-1's fence (scale 1.003),
+cardboard clouds (3%) and hills (unscaled) are below the threshold and
+unchanged; the other scaled strip images are menu and intro screens.
+
+## Open: 4-1's blue blocks vanish at the 4:3 edge (issue #28)
+
+**From the reporter's first clip:** the rightmost block vanishes when its centre passes about x = 368 (320 + 48) in the
 320-wide view's coordinates, before the wider view's edge (~373).
 
 **Not yet found:** the check. Not the shared test (func_800591EC, already

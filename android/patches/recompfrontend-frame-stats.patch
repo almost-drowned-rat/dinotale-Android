@@ -1,3 +1,5 @@
+diff --git a/recompui/src/base/ui_state.cpp b/recompui/src/base/ui_state.cpp
+index 217a72a..478cb01 100644
 --- a/recompui/src/base/ui_state.cpp
 +++ b/recompui/src/base/ui_state.cpp
 @@ -39,6 +39,56 @@
@@ -56,8 +58,8 @@
 +
  static std::atomic_bool cursor_enabled = true;
  
- void recompui::open_quit_game_prompt() {
-@@ -694,6 +744,8 @@
+ static std::function<void()> restart_callback;
+@@ -747,6 +797,8 @@ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer*
          return;
      }
  

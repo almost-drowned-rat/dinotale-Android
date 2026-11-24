@@ -15,11 +15,10 @@ included:** you need your own copy of the game.
 - **Widescreen:** play in 4:3, stretched, or true widescreen (Expand) that
   shows more of each level, up to 16:9.
 - HUD at the edges of the window in widescreen, or kept in its original place.
-- RetroArch shaders (librashader): CRT, scanlines, LCD, the xBR, xBRZ and HQ2x upscalers, or any slang preset of
-  your own.
-- **Android** (this fork's `android` branch): touch buttons, full screen, Android's file picker for the ROM.
+- Screen filters: CRT, scanlines, LCD, and the xBR, xBRZ and HQ2x upscalers.
 - Keyboard and controller support with remappable controls.
 - Saves and sound.
+- Cheats and GameShark codes, in the settings.
 
 ## Download and play
 
@@ -37,10 +36,35 @@ in-game menu.
 
 ### Portable mode
 
-Settings, saves and mods normally go in `%LOCALAPPDATA%\dinotale` (Windows)
-or `~/.config/dinotale` (Linux). Add a blank `portable.txt` next to
-`DinoTale.exe` (or `DinoTale`) to keep them in the game's own folder instead,
-for example on a USB stick. Copy existing settings and saves over by hand.
+Settings, saves and mods are kept in the game's own folder (`portable.txt`
+next to `DinoTale.exe` or `DinoTale` marks it), so the folder can go
+anywhere, a USB stick included. An install from before 0.1.9, which keeps
+them in `%LOCALAPPDATA%\dinotale` (Windows) or `~/.config/dinotale`
+(Linux), keeps using that: add a blank `portable.txt` to switch (and copy
+them over), or delete it to go back. If the game's folder can't be written
+to, the usual place is used.
+
+### Command line
+
+Most settings can be given on the command line, for a shortcut or a Steam
+launch option. They're used for that run, unless `--save-settings` is given
+too.
+
+```
+DinoTale --rom "Yoshi's Story.z64" --play --aspect expand --fullscreen
+```
+
+- `--rom <file>`: pick the ROM (also inside a `.zip` or `.7z`).
+- `--play`: skip the launcher and start the game.
+- `--fullscreen`, `--windowed`, `--resolution`, `--aspect`, `--hud`,
+  `--framerate`, `--fps`, `--msaa`, `--downsampling`, `--api`,
+  `--screen-filter`, `--texture-filtering`, `--hybrid-dimming`,
+  `--frame-generation`, `--lsfg-multiplier`, `--lsfg-mode`, `--volume`,
+  `--rumble`, `--deadzone`, `--background-input`: the settings of those
+  names, for example `--screen-filter crt` or `--volume 50`.
+- `--set <option>=<value>`: any setting, by its name in the settings files.
+- `--list-settings` lists every setting with its value and choices; `--help`
+  lists the options.
 
 ### Game files
 
@@ -74,55 +98,29 @@ it runs on the Vulkan graphics API, which it switches to. Multiplier sets 2x,
 3x or 4x the game's frame rate; Performance mode is lighter on the GPU. It
 adds about one game frame of input delay. Windows and Linux.
 
-### Shaders
+## Cheats and GameShark codes
 
-Settings > Graphics > Shader runs a RetroArch slang shader over the final picture, through
-[librashader](https://github.com/SnowflakePowered/librashader) (Vulkan graphics API). **CRT**, **Scanlines**,
-**LCD**, **xBR**, **xBRZ** and **HQ2x** come with the game (`assets/shaders`, licences in
-`assets/shaders/LICENSES.txt`). **Custom** runs your own preset, `shaders/custom.slangp`: put a shader pack (for
-example [libretro's slang-shaders](https://github.com/libretro/slang-shaders)) into the `shaders` folder and make
-`custom.slangp` point at the preset you want, e.g. a file with the one line
+**Settings > Cheats** has the game's secrets without earning them, and a few
+helpers:
 
-```
-#reference "slang-shaders/crt/crt-royale.slangp"
-```
+- **Black and White Yoshi:** both are always there to pick (normally you find
+  their eggs in 2-1 and 3-2). They join on the next Select Yoshi screen.
+- **Yoshi Colour:** play as any of the eight Yoshis, in any mode, Practice
+  included.
+- **Infinite Health**, **Choose Any Course** (any course on each Story page),
+  **Open All Trial Courses** (saved with your progress, so they stay open).
 
-The `shaders` folder is next to the game, on Android in `Android/data/io.github.almostdrownedrat.dinotale/files/`
-(reachable over USB). The desktop builds need `librashader.so` / `librashader.dll` next to the game; without it the
-Shader setting does nothing. They replace the earlier Screen Filter setting.
+**Settings > Hacks** has GameShark codes from the usual code lists to switch
+on, and **Custom Codes** for your own: type them as written, for example
+`800F895F 0063; 810F8994 0100`. Codes are applied every frame, as a GameShark
+does; 88 and 89 codes are applied when you press **GameShark Button**. Codes
+that change the game's own code (most "infinite eggs" or "walk through
+enemies" codes) can't work in a recompiled game and are skipped.
 
-**On Android** the shaders are in Settings > **Android Options** (after Graphics) instead: **Shader...** imports a
-slang shader pack (.zip, such as libretro/slang-shaders' "Download ZIP") into
-`Android/data/io.github.almostdrownedrat.dinotale/files/shaders` and lists its folders and presets to pick from (a
-choice is used at once), **Shader parameters...** changes the active preset's settings (kept per preset), and
-**Shader Resolution** sets the size of the game's picture the shader works on: **Original** (the N64's 240 lines,
-as in RetroArch - the look the shaders were made for, and by far the lightest; crt-royale runs at full speed on an
-Odin 2 Portal), **2x**, or **Full** (the window's size; heavy shaders get slow). The presets shipped for the desktop
-aren't used there - a pack offers far more. The same tab has **GPU Driver (Turnip)...**.
-
-## Android
-
-The `android` branch of this fork builds an APK for arm64 Android devices with Vulkan (Android 8+), made for
-handhelds like the AYN Odin 2 Portal and phones alike. The Android layer comes from the
-[DK64: Recompiled Android port](https://github.com/deivid22srk/dk64-recomp-android) by deivid22srk.
-
-- **Load ROM** opens Android's file picker; the app restarts once to finish setting up.
-- **Touch buttons** (N64 layout: stick, A, B, Z, L, R, START, C buttons; D-pad hidden by default). Their settings
-  are under Touch controls in the menu (Back, or the controller icon at the top centre): Touch buttons Automatic / Always / Off (Automatic hides them while a
-  controller is used and a touch brings them back), move and resize, button size, show / hide single buttons,
-  opacity, stick sensitivity, reset. Touches off the buttons work as a mouse in the menus.
-- Android's **Back** (swipe from the edge to show the system bar and tap back, or the back gesture) opens
-  the menu in game — the same in all of this fork's Android ports and fully usable with the controller (D-pad /
-  stick, **A** choose, **B** back): **Back to the game**, **Game settings and controller** (the game's own menu,
-  where the controller is set up) and **Touch controls**. With the game's menu open, Back closes it.
-- Lossless Scaling frame generation isn't available on Android (it needs the Windows `Lossless.dll`).
-
-Build: see `android/` and the steps in BUILDING.md (codegen on a Linux host first, then Gradle with NDK 27).
-
-### AI assistance
-
-The Android port and the shader support were made with AI assistance ([Claude Code](https://claude.com/claude-code)).
-Planning, testing on the device and the decision what gets released are by the fork's owner.
+The pause code "hold L, then A, B, A, C-Up, Left" for invincibility and
+"collect every coin for Purple Yoshi" from some cheat lists aren't in the
+game: nothing in it checks for that button sequence, and Purple Yoshi was cut
+before release. Infinite Health covers the first.
 
 ## Reporting issues
 
@@ -148,14 +146,6 @@ log.
   this project builds on
 - [splat](https://github.com/ethteck/splat), `spimdisasm` and `rabbitizer`,
   used to find the game's functions
-- [deivid22srk/dk64-recomp-android](https://github.com/deivid22srk/dk64-recomp-android), the Android layer
-- [librashader](https://github.com/SnowflakePowered/librashader) by SnowflakePowered (MPL-2.0 / GPL-3.0), the
-  shader runtime, and the shipped presets from [libretro/slang-shaders](https://github.com/libretro/slang-shaders)
-  (authors and licences in `assets/shaders/LICENSES.txt`)
-- The launcher screen's layout follows [DK64 Recompiled](https://github.com/Rainchus/Donkey-Kong-64-Recompiled)'s
-  launcher; its pictures (`assets/launcher`: sky, hills, a hill with a tree, clouds) were drawn for DinoTale
-  (GPL-3.0), the logo and options use [Fredoka](https://github.com/hafontia/Fredoka-One) by the Fredoka Project
-  Authors (SIL OFL 1.1, `assets/FREDOKA_LICENSE.txt`; a static SemiBold instance of the variable font)
 
 ## License
 

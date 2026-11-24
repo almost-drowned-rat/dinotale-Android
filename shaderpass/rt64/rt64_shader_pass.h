@@ -1,4 +1,4 @@
-// RetroArch slang shader presets for RT64's present (lib-patches/rt64/0026): the VI renderer draws the game's
+// RetroArch slang shader presets for RT64's present (lib-patches/rt64/0027): the VI renderer draws the game's
 // picture into an image of the swap chain's size, and librashader's Vulkan filter chain draws that image into the
 // swap chain. Modelled on THPS 2X Recompiled's shader module (librashader v0.12.1, Vulkan runtime only).
 // librashader is loaded at run time (shaderpass_loader.cpp): without it, or without a preset, nothing changes.

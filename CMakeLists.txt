@@ -87,7 +87,7 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/lib/rt64 ${CMAKE_BINARY_DIR}/rt64)
 target_sources(rt64 PRIVATE ${CMAKE_SOURCE_DIR}/lib/lsfg/rt64/rt64_frame_generation.cpp)
 target_include_directories(rt64 PUBLIC ${CMAKE_SOURCE_DIR}/lib/lsfg/rt64)
 
-# RetroArch shader presets (shaderpass/rt64, lib-patches/rt64/0026), drawn by librashader; librashader is loaded
+# RetroArch shader presets (shaderpass/rt64, lib-patches/rt64/0027), drawn by librashader; librashader is loaded
 # at run time from next to the game (librashader.so / librashader.dll), without it the Shader setting does nothing.
 target_sources(rt64 PRIVATE ${CMAKE_SOURCE_DIR}/shaderpass/rt64/rt64_shader_pass.cpp)
 target_include_directories(rt64 PUBLIC ${CMAKE_SOURCE_DIR}/shaderpass/rt64 ${CMAKE_SOURCE_DIR}/thirdparty/librashader/include)

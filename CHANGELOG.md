@@ -1,7 +1,26 @@
 # Changelog
 
-## Unreleased
+## 0.1.9
 
+- A Restart button in the menu's header, between Quit and Close (and a
+  Restart choice when quitting): the game closes and starts again, with the
+  same command line. Handy after a setting that takes effect on the next
+  start. From Sin and Punishment Recompiled.
+- Settings > Cheats: Black and White Yoshi always there to pick, any Yoshi
+  colour in any mode (Practice included), infinite health, any course on
+  each page, every Trial course open.
+- Settings > Hacks: GameShark codes to switch on, and Custom Codes for your
+  own, with a GameShark Button for 88/89 codes.
+- Jungle Hut's treehouses (page 4): the blue blocks no longer rocks and bobs against
+  itself and the wall as the camera moves (issue #28). The zoomed-out
+  treehouse put each block on whole pixels at its own moment.
+- Portable by default: a new install keeps its settings, saves and mods in
+  the game's own folder. An install that already has them in
+  AppData\Local\dinotale or ~/.config/dinotale keeps using that.
+- Command-line options: `--rom <file>` picks the ROM, `--play` skips the
+  launcher, and most settings can be set (`--aspect expand`,
+  `--fullscreen`, `--screen-filter crt`, any setting with `--set`), for
+  that run or saved with `--save-settings`. `--help` lists them.
 - Lossless Scaling frame generation: a Vulkan correctness fix (from
   BattleTanx: Global Assault Recompiled), so it doesn't rely on the graphics
   driver accepting empty shader inputs. The generated frames are the same.

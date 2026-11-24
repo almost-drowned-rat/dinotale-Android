@@ -47,6 +47,8 @@
 #include "recompui/program_config.h"
 #include "recompui/renderer.h"
 #include "recompui/config.h"
+#include "dinotale_restart.h"
+#include "dinotale_command_line.h"
 #include "util/file.h"
 
 #include "recompinput/input_state.h"
@@ -75,6 +77,8 @@ void register_dinotale_overlays();
 void dinotale_add_display_options(recomp::config::Config &config);
 // frame_generation_config.cpp: Settings > Graphics > Frame Generation (Lossless Scaling).
 void dinotale_add_frame_generation_options(recomp::config::Config &graphics);
+// cheats.cpp: Settings > Cheats and Settings > Hacks (GameShark codes).
+void dinotale_add_cheat_tabs();
 void dinotale_update_display_options();
 
 // rom_archive.cpp: the game's ROM from a .zip or .7z, or nothing.
@@ -82,7 +86,7 @@ std::vector<uint8_t> dinotale_read_rom_archive(const std::vector<uint8_t>& file_
 
 static const std::string program_name = "DinoTale";
 static const std::u8string program_id = u8"dinotale";
-static const std::string version_string = "0.1.8";
+static const std::string version_string = "0.1.9";
 
 template <typename... Ts>
 [[noreturn]] static void exit_error(const char* fmt, Ts... args) {
@@ -583,6 +587,15 @@ int main(int argc, char** argv) {
         std::filesystem::current_path(androidport::internal_files_dir(), cwd_error);
     }
 #endif
+
+    // Command-line options (command_line.cpp), read before the game moves to its own folder.
+    dinotale_attach_console(argc);
+    DinoTaleCommandLine command_line;
+    if (!dinotale_parse_command_line(argc, argv, command_line)) {
+        fflush(stdout);
+        return EXIT_SUCCESS;
+    }
+
     find_assets_folder();
 
     recomp::Version project_version{};
@@ -597,6 +610,8 @@ int main(int argc, char** argv) {
 
     recompui::programconfig::set_program_name(program_name);
     recompui::programconfig::set_program_id(program_id);
+    // A new install keeps its settings, saves and mods in the game's own folder.
+    dinotale_use_portable_mode_by_default();
 
     SDL_InitSubSystem(SDL_INIT_AUDIO);
     if (!open_audio_device(game_frequency)) {
@@ -658,7 +673,7 @@ int main(int argc, char** argv) {
             true);   // shown as a button (below)
     }
     // Settings > Android Options: Shader, Shader Resolution, Shader parameters, an empty line, GPU Driver - each a
-    // button with what's in use beside it (lib-patches/RecompFrontend/0005). Shader Resolution's
+    // button with what's in use beside it (lib-patches/RecompFrontend/0007). Shader Resolution's
     // option itself is hidden; its button goes through Original, 2x and Full.
     {
         using recompui::config::OptionButton;
@@ -707,8 +722,20 @@ int main(int argc, char** argv) {
 #endif
     recompui::config::create_controls_tab();
     recompui::config::create_sound_tab();
+    dinotale_add_cheat_tabs();
     recompui::config::create_mods_tab();
     recompui::config::finalize();
+
+    // Settings and the ROM from the command line, now that the saved settings are loaded.
+    if (!dinotale_apply_command_line(command_line)) {
+        fflush(stdout);
+        std::_Exit(EXIT_SUCCESS);
+    }
+    // The runtime reads --game (from --play) and --game-mode itself.
+    std::vector<char *> runtime_argv = { argv[0] };
+    for (std::string &arg : command_line.runtime_args) {
+        runtime_argv.push_back(arg.data());
+    }
 
     recomp::rsp::callbacks_t rsp_callbacks{
         .get_rsp_microcode = get_rsp_microcode,
@@ -771,9 +798,11 @@ int main(int argc, char** argv) {
     recompui::register_launcher_init_callback(on_launcher_init);
     recompui::register_launcher_update_callback(dinotale::launcher_update);
 
+    dinotale::restart::install(argc, argv);
+
     recomp::start({
-        .argc = argc,
-        .argv = argv,
+        .argc = int(runtime_argv.size()),
+        .argv = runtime_argv.data(),
         .project_version = project_version,
         .window_handle = {}, // created by gfx_callbacks.create_window
         .rsp_callbacks = rsp_callbacks,
@@ -794,6 +823,7 @@ int main(int argc, char** argv) {
     // returns, so running static destructors/atexit handlers underneath
     // them can crash on quit -- exit directly instead (same approach as
     // other N64Recomp projects' main()).
+    dinotale::restart::relaunch_if_requested();
     fflush(stdout);
     fflush(stderr);
     std::_Exit(EXIT_SUCCESS);

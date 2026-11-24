@@ -275,7 +275,7 @@ add_subdirectory("${FRONTEND_DIR}" "${CMAKE_BINARY_DIR}/RecompFrontend")
 target_sources(rt64 PRIVATE "${ANDROID_PORT_DIR}/native/compat/rt64_frame_generation_stub.cpp")
 target_include_directories(rt64 PUBLIC "${REPO_ROOT}/lib/lsfg/rt64")
 target_include_directories(recompui PRIVATE "${REPO_ROOT}/lib/lsfg/rt64")
-# RetroArch shader presets (shaderpass/rt64, lib-patches/rt64/0026): librashader is loaded at run time
+# RetroArch shader presets (shaderpass/rt64, lib-patches/rt64/0027): librashader is loaded at run time
 # (liblibrashader_capi.so in the APK, put into src/main/jniLibs by tools/build_dinotale.sh).
 target_sources(rt64 PRIVATE "${REPO_ROOT}/shaderpass/rt64/rt64_shader_pass.cpp")
 target_include_directories(rt64 PUBLIC "${REPO_ROOT}/shaderpass/rt64" "${REPO_ROOT}/thirdparty/librashader/include")
