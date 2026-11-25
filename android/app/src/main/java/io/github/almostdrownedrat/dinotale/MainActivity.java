@@ -196,7 +196,8 @@ public class MainActivity extends SDLActivity {
                 @Override public void setParam(String name, float value) { TouchNative.nativeShaderSetParam(name, value); }
             };
             shaderLibrary = new ShaderLibrary(this, touch, rt64);
-            touch.setShaderMenu(shaderLibrary, false);   // opened from Settings > Android Options
+            touch.setShaderMenu(shaderLibrary, false);   // shown in Settings > Shaders (the card menu)
+            touch.setCardMenu(true);                     // Back opens the card menu (Settings), B there goes up
             try {
                 String chosen = ShaderLibrary.chosen(this);
                 rt64.use(chosen);

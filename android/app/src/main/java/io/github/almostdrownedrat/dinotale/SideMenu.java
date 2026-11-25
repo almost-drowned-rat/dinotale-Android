@@ -34,6 +34,8 @@ final class SideMenu extends FrameLayout {
         boolean isValue() { return value() != null; }
         /** Y: back to the default value; false if the item has none. */
         boolean reset() { return false; }
+        /** A two-state value (On / Off): the card menu shows it as a switch. */
+        boolean isSwitch() { return false; }
     }
 
     interface Page { String title(); List<Item> items(); }

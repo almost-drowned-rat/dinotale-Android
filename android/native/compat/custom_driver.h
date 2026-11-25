@@ -18,6 +18,7 @@
 
 #ifdef __cplusplus
 #include <string>
+#include <vector>
 
 /*
  * Utilidades usadas pelo menu "GPU Driver" do launcher (main.cpp) — C++ puro
@@ -41,6 +42,17 @@ std::string active_name();
  * cache para que o próximo ensure recarregue (caindo no driver do sistema).
  */
 void reset_selection();
+
+// The drivers installed before (files/driver/installed/<id>/), for the card menu's driver page: picking one writes
+// selected.txt as the installer does (the app restarts to load it).
+struct InstalledDriver {
+    std::string dir;       // with a trailing '/'
+    std::string library;   // the .so to load
+    std::string name;
+};
+std::vector<InstalledDriver> installed_drivers();
+bool select_installed(const InstalledDriver &driver);
+std::string selected_dir();   // the selection's dir ("" = the system driver)
 
 } // namespace dk64driver
 #endif

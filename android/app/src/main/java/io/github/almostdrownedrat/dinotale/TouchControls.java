@@ -85,7 +85,7 @@ public final class TouchControls {
             overlay.setGameRunning(running);
             overlay.setGameMenuOpen(menuOpen);
             if (shaderMenu != null) shaderMenu.gameState(running, menuOpen);
-            updateFps(running);
+            updateFps(running && !menuOpen);   // not over the menu (its title sits there)
             updateIcon();
             handler.postDelayed(this, POLL_MS);
         }
@@ -104,6 +104,7 @@ public final class TouchControls {
     public TouchControls(Activity a, View anchor, TouchOverlay.Sink sink, GameState game) {
         this.game = game;
         this.activity = a;
+        bridgeOwner = this;
         this.anchor = anchor;
         overlay = new TouchOverlay(a, sink);
         icon = new Icon(a);
@@ -209,6 +210,11 @@ public final class TouchControls {
 
     public boolean isMenuOpen() { return menu.isOpen(); }
 
+    /** A port whose own (native) menu shows this menu's pages (the N64 ports' card menu): Back then opens and
+     *  closes only the game's menu - this side menu is not used. */
+    void setCardMenu(boolean on) { cardMenu = on; }
+    private boolean cardMenu;
+
     /** Adds "Shader ›" with its own pages to the menu (ports with ShaderLibrary). */
     void setShaderMenu(ShaderMenu m) { setShaderMenu(m, true); }
 
@@ -228,7 +234,10 @@ public final class TouchControls {
     void hideProgress() { progress.hide(); }
 
     /** For ShaderMenu pages: open a sub-page, rebuild the current one (values changed). */
-    void pushPage(SideMenu.Page p) { menu.push(p); }
+    void pushPage(SideMenu.Page p) {
+        if (bridgeCapturing) { bridgePushed = bridgeRegister(p); return; }   // a page of the card menu
+        menu.push(p);
+    }
     void refreshPage() { if (menu.isOpen()) menu.refresh(); }
 
     private void updateIcon() {
@@ -291,8 +300,9 @@ public final class TouchControls {
         // controller button the game's menu doesn't close on (SDL makes it the pad's Select / Back).
         boolean gameMenu = false;
         try { gameMenu = game.menuOpen(); } catch (UnsatisfiedLinkError ignored) { }
-        if (gameMenu) {
-            try { game.openGameMenu(); } catch (UnsatisfiedLinkError ignored) { }   // toggles: closes it
+        if (gameMenu || cardMenu) {
+            // toggles: closes it (the card menu goes up one level first, in the game), or opens the card menu
+            try { game.openGameMenu(); } catch (UnsatisfiedLinkError ignored) { }
             return true;
         }
         openMenu();
@@ -376,21 +386,116 @@ public final class TouchControls {
                         @Override void run() { menu.push(shaderMenu.paramsPage()); }
                     });
                 }
-                if (fpsMeasured()) {
-                    l.add(new SideMenu.Item("FPS") {
-                        @Override String value() { return fpsOn ? "On" : "Off"; }
-                        @Override void step(int d) {
-                            fpsOn = !fpsOn;
-                            activity.getSharedPreferences("touch", Context.MODE_PRIVATE).edit().putBoolean("fps", fpsOn).apply();
-                        }
-                        @Override boolean reset() { if (fpsOn) step(1); return true; }
-                    });
-                }
+                if (fpsMeasured()) l.add(fpsItem());
                 l.add(new SideMenu.Item("Exit game") { @Override void run() { exitGame(); } });
                 return l;
             }
         };
     }
+
+    private SideMenu.Item fpsItem() {
+        return new SideMenu.Item("FPS") {
+            @Override String value() { return fpsOn ? "On" : "Off"; }
+            @Override boolean isSwitch() { return true; }
+            @Override void step(int d) {
+                fpsOn = !fpsOn;
+                activity.getSharedPreferences("touch", Context.MODE_PRIVATE).edit().putBoolean("fps", fpsOn).apply();
+            }
+            @Override boolean reset() { if (fpsOn) step(1); return true; }
+        };
+    }
+
+    // ---------------------------------------------------------------- the card menu's view of these pages
+    // The N64 ports' native card menu (MenuCards.cpp) shows this menu's pages as cards: it reads them through these
+    // static calls from its own (game) thread and acts on them through the UI thread. Pages: "touch" (Touch
+    // controls), "shader" (ShaderLibrary's page), "display" (FPS); a page an item opens (pushPage) is registered
+    // under a new id and handed over by bridgeTakePushed().
+    private static volatile TouchControls bridgeOwner;
+    private final java.util.Map<String, SideMenu.Page> bridgePages = new java.util.concurrent.ConcurrentHashMap<>();
+    private volatile String bridgePushed;
+    private volatile boolean bridgeClose;
+    private boolean bridgeCapturing;
+    private int bridgeSeq;
+
+    private String bridgeRegister(SideMenu.Page p) {
+        String id = "p" + (++bridgeSeq);
+        bridgePages.put(id, p);
+        return id;
+    }
+
+    private SideMenu.Page bridgePage(String id) {
+        switch (id) {
+            case "touch": return touchPage();
+            case "display": return new SideMenu.Page() {
+                public String title() { return "Display"; }
+                public List<SideMenu.Item> items() {
+                    List<SideMenu.Item> l = new ArrayList<>();
+                    if (fpsMeasured()) l.add(fpsItem());
+                    return l;
+                }
+            };
+            case "game": return new SideMenu.Page() {   // the card menu's General: Exit game
+                public String title() { return "Game"; }
+                public List<SideMenu.Item> items() {
+                    List<SideMenu.Item> l = new ArrayList<>();
+                    l.add(new SideMenu.Item("Exit game") { @Override void run() { exitGame(); } });
+                    return l;
+                }
+            };
+            case "shader":
+                if (shaderMenu == null) return null;
+                return shaderMenu.categoryPage() != null ? shaderMenu.categoryPage() : shaderMenu.page();
+            default: return bridgePages.get(id);
+        }
+    }
+
+    /** A page for the card menu: { title, then per item: kind ("v" a value, "s" a value shown as a switch, "a" an action), title, value }; an
+     *  empty array if there is no such page. Any thread. */
+    static String[] bridgeItems(String id) {
+        TouchControls t = bridgeOwner;
+        SideMenu.Page p = t != null ? t.bridgePage(id) : null;
+        if (p == null) return new String[0];
+        List<SideMenu.Item> items;
+        try { items = p.items(); } catch (RuntimeException e) { return new String[0]; }
+        String[] out = new String[1 + 3 * items.size()];
+        out[0] = p.title();
+        for (int i = 0; i < items.size(); i++) {
+            SideMenu.Item it = items.get(i);
+            String v = it.value();
+            out[1 + 3 * i] = v == null ? "a" : it.isSwitch() ? "s" : "v";   // "s": a value shown as a switch
+            out[2 + 3 * i] = it.title;
+            out[3 + 3 * i] = v != null ? v : "";
+        }
+        return out;
+    }
+
+    /** op: -1 / +1 step a value, 0 run an action, 2 its default (Y). Done on the UI thread. */
+    static void bridgeAct(String id, int index, int op) {
+        TouchControls t = bridgeOwner;
+        if (t == null) return;
+        t.handler.post(() -> {
+            SideMenu.Page p = t.bridgePage(id);
+            if (p == null) return;
+            List<SideMenu.Item> items = p.items();
+            if (index < 0 || index >= items.size()) return;
+            SideMenu.Item it = items.get(index);
+            boolean wasEditing = t.overlay.isEditing();
+            t.bridgeCapturing = true;
+            try {
+                if (op == 0) it.run(); else if (op == 2) it.reset(); else it.step(op);
+            } finally {
+                t.bridgeCapturing = false;
+            }
+            if (t.menu.isOpen()) t.menu.close();                 // an item that opened the side menu's page
+            if (!wasEditing && t.overlay.isEditing()) t.bridgeClose = true;   // "Move and resize": to the game
+        });
+    }
+
+    /** The page an action opened (a new id), or null. Read once. */
+    static String bridgeTakePushed() { TouchControls t = bridgeOwner; if (t == null) return null; String s = t.bridgePushed; t.bridgePushed = null; return s; }
+
+    /** Whether the card menu should close now (the layout editor started). Read once. */
+    static boolean bridgeTakeClose() { TouchControls t = bridgeOwner; if (t == null) return false; boolean b = t.bridgeClose; t.bridgeClose = false; return b; }
 
     /** Ends the game: finishing the activity makes SDL send the game its quit event (saves are written on the way
      *  out); the process is ended after a grace period, so the next start is a fresh one. */
@@ -422,7 +527,7 @@ public final class TouchControls {
                     @Override void step(int d) { overlay.setScale(Math.max(0.5f, Math.min(1.5f, overlay.getScale() + 0.25f * d))); }
                     @Override boolean reset() { overlay.setScale(1f); return true; }
                 });
-                l.add(new SideMenu.Item("Show / hide single buttons") { @Override void run() { menu.push(hidePage()); } });
+                l.add(new SideMenu.Item("Show / hide single buttons  ›") { @Override void run() { pushPage(hidePage()); } });
                 l.add(new SideMenu.Item("Opacity") {           // 25-100 %
                     @Override String value() { return overlay.getOpacity() + " %"; }
                     @Override void step(int d) { overlay.setOpacity(Math.max(25, Math.min(100, overlay.getOpacity() + 25 * d))); }
@@ -448,6 +553,7 @@ public final class TouchControls {
                     final int b = i;
                     l.add(new SideMenu.Item(TouchOverlay.NAMES[b]) {
                         @Override String value() { return overlay.isHidden(b) ? "hidden" : "shown"; }
+                        @Override boolean isSwitch() { return true; }
                         @Override void step(int d) { overlay.setHidden(b, !overlay.isHidden(b)); }
                         @Override boolean reset() { overlay.setHidden(b, TouchOverlay.hiddenByDefault(b)); return true; }
                     });

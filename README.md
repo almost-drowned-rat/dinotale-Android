@@ -37,33 +37,43 @@ Needs Android 8.0 or newer, a 64-bit (arm64) device and a GPU with Vulkan. App I
 - **Touch buttons** (N64 layout: stick, A, B, Z, L, R, START, C buttons; D-pad hidden by default). **Automatic**
   hides them while a controller is used and a touch brings them back; **Always** and **Off** are the other modes.
 - **Back** (the back gesture, the system bar's back button or a handheld's own Back key) opens the menu over the
-  game, fully usable with the controller (D-pad / stick, **A** choose, **B** back, holding the D-pad keeps moving):
-  - **Back to the game**
-  - **Touch controls** — mode, move and resize, size, single buttons, opacity, stick sensitivity, reset
-  - **Settings** — the game's own settings
-  - **FPS** — a small readout of the frame rate and frame time in the corner
-  - **Exit game**
+  game; Back again closes it.
 
-  With the game's settings open, Back closes them. In all menus **Y** sets the selected setting back to its
-  default; graphics settings are applied with **Start**.
+## Menu
 
-## Android settings
+One menu for everything — the game's settings and the Android ones — laid out the same in all of these N64 Android
+ports: the sections in a column on the left, the settings as cards on the right, grouped under headings and marked
+in the game's colour (green, as its start screen).
 
-Settings > **Android Options** (after Graphics); each line shows what is in use beside it:
+- **Controller**: D-pad / stick move, **A** select (on a value **A** takes it, left / right change it, **A** or **B**
+  lets go), **B** one level back (from the section column it closes the menu), **Y** back to the default,
+  **L / R** the section. The hints are at the bottom right.
+- **Touch**: tap a card, swipe to scroll; on a value a tap on its left third steps back, on the rest forward.
 
-- **Shader...** — RetroArch shaders (librashader, drawn by RT64). None are shipped on Android: **Import shader
-  pack (.zip)** takes a slang shader pack such as [libretro/slang-shaders](https://github.com/libretro/slang-shaders)'
-  "Download ZIP"; its folders and presets are then listed to pick from (a choice is used at once).
-- **Shader Resolution** — the size of the picture the shader works on: **Original** (the N64's 240 lines, as in
-  RetroArch — the look the shaders were made for and by far the lightest; crt-royale runs at full speed on the
-  Odin 2 Portal), **2x** or **Full**.
-- **Shader parameters...** — the active preset's settings (kept per preset).
-- **GPU Driver (Turnip)...** — installs a Turnip driver package (`.zip`) or goes back to the system driver; the
-  app restarts.
+The sections:
 
-The display options of the main project (aspect ratio, widescreen, HUD) are in Settings > Graphics as on the PC.
-There are no window mode options (always full screen), the right stick scrolls the menus, and Lossless Scaling
-frame generation isn't available (it needs the Windows `Lossless.dll`).
+- **General** — Back to game, Exit game; Background Input Mode
+- **Gameplay** — Cheats (with Yoshi Colour) and Hacks (with Custom Codes and the GameShark Button)
+- **Graphics** — picture, quality (also the main project's display options: aspect ratio, texture filtering,
+  hybrid dimming), frame rate (with the FPS readout) and the GPU driver; graphics changes are applied with
+  **Apply** at the bottom
+- **Shaders**, **Audio**
+- **Controls** — Button mapping, deadzone, rumble; the touch buttons (mode, move and resize, size, single buttons,
+  opacity, stick sensitivity, reset)
+- **Mods** — Manage mods (before the game starts). In the game, **Install / switch mods (restart)** restarts the
+  app to the start screen, where mods are installed and turned on or off.
+
+There are no window mode options (always full screen), and Lossless Scaling frame generation isn't available (it
+needs the Windows `Lossless.dll`).
+
+### Shaders and GPU driver
+
+- **Shaders** — RetroArch shaders (librashader, drawn by RT64). None are shipped: **Import shader pack (.zip)** takes a slang
+  shader pack such as [libretro/slang-shaders](https://github.com/libretro/slang-shaders)' "Download ZIP"; pick a
+  preset by folder and change its parameters (kept per preset). **Shader Resolution**: **Original** (the N64's
+  240 lines, as in RetroArch — the look the shaders were made for and by far the lightest), **2x** or **Full**.
+- **Graphics > Driver > GPU Driver (Turnip)** — pick one of the installed drivers, **Install driver (.zip)** or
+  **Use system driver**; the app restarts.
 
 ## Known issues
 

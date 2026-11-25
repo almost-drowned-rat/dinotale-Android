@@ -45,6 +45,7 @@
 
 #include <android/log.h>
 #include <cerrno>
+#include <dirent.h>
 #include <dlfcn.h>
 #include <jni.h>
 #include <sys/stat.h>
@@ -53,6 +54,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <iterator>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -520,6 +522,73 @@ std::string status_text() {
            "You can install a Turnip driver (.zip, Adreno GPUs) for better "
            "performance. After installing, the app will restart automatically "
            "to load the new driver.";
+}
+
+// a "key": "value" string from meta.json (enough for adrenotools' flat meta files)
+static std::string meta_string(const std::string &json, const char *key) {
+    const std::string k = std::string("\"") + key + "\"";
+    size_t p = json.find(k);
+    if (p == std::string::npos) return "";
+    p = json.find(':', p + k.size());
+    if (p == std::string::npos) return "";
+    p = json.find('"', p);
+    if (p == std::string::npos) return "";
+    const size_t e = json.find('"', p + 1);
+    return e == std::string::npos ? "" : json.substr(p + 1, e - p - 1);
+}
+
+std::vector<InstalledDriver> installed_drivers() {
+    std::vector<InstalledDriver> out;
+    const std::string &files = androidport::internal_files_dir();
+    if (files.empty()) return out;
+    const std::string base = files + "/driver/installed/";
+    DIR *d = opendir(base.c_str());
+    if (d == nullptr) return out;
+    while (dirent *e = readdir(d)) {
+        const std::string id = e->d_name;
+        if (id == "." || id == "..") continue;
+        InstalledDriver drv;
+        drv.dir = base + id + "/";
+        std::ifstream meta(drv.dir + "meta.json");
+        if (meta) {
+            const std::string json((std::istreambuf_iterator<char>(meta)), std::istreambuf_iterator<char>());
+            drv.name = meta_string(json, "name");
+            drv.library = meta_string(json, "libraryName");
+        }
+        if (drv.library.empty()) {
+            if (DIR *sd = opendir(drv.dir.c_str())) {
+                while (dirent *f = readdir(sd)) {
+                    const std::string n = f->d_name;
+                    if (n.size() > 3 && n.compare(n.size() - 3, 3, ".so") == 0) {
+                        drv.library = n;
+                        break;
+                    }
+                }
+                closedir(sd);
+            }
+        }
+        if (drv.library.empty()) continue;
+        if (drv.name.empty()) drv.name = id;
+        out.push_back(drv);
+    }
+    closedir(d);
+    return out;
+}
+
+bool select_installed(const InstalledDriver &driver) {
+    const std::string &files = androidport::internal_files_dir();
+    if (files.empty()) return false;
+    std::ofstream f(files + "/driver/selected.txt", std::ios::trunc);
+    if (!f) return false;
+    f << "dir=" << driver.dir << "\nlibrary=" << driver.library << "\nname=" << driver.name << "\n";
+    return static_cast<bool>(f);
+}
+
+std::string selected_dir() {
+    const std::string &files = androidport::internal_files_dir();
+    DriverSelection sel;
+    if (files.empty() || !read_key_value_file(files + "/driver/selected.txt", sel)) return "";
+    return sel.dir;
 }
 
 void reset_selection() {

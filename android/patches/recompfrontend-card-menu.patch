@@ -1,0 +1,1775 @@
+diff --git a/recompui/include/recompui/config.h b/recompui/include/recompui/config.h
+index 7f091c6..94155d8 100644
+--- a/recompui/include/recompui/config.h
++++ b/recompui/include/recompui/config.h
+@@ -174,6 +174,44 @@ namespace recompui {
+         // The buttons of an option, in the order they were added (none: nullptr).
+         const std::vector<OptionButton> *get_option_buttons(const std::string &option_id);
+ 
++#ifdef __ANDROID__
++        // The Android card menu (the same look in all N64 ports): a tab is a list of cards, each taken from any config
++        // (option_card), a value or an action of the app's own, a section title, or a link to a sub-list / own page.
++        struct MenuCardEntry {
++            std::string label;
++            std::string description;
++            bool header = false;                              // a section title
++            bool is_switch = false;                           // a two-state value: a switch, not a pill
++            std::function<std::string()> value;               // a value item ("On" / "Off": a switch); none: an action
++            std::function<void(int)> step;                    // -1 / +1 on a value item
++            std::function<void()> run;                        // an action (A / tap)
++            std::function<void()> reset;                      // Y: back to the default
++            std::function<bool()> hidden;
++            std::function<bool()> disabled;
++            std::function<std::vector<MenuCardEntry>()> sub_entries;   // "›": a sub-list
++            std::function<void(ContextId, Element *)> sub_page;         // "›": a page of its own (e.g. the bindings)
++            std::string config_id;                            // set by option_card (unapplied changes)
++        };
++        using MenuCardList = std::function<std::vector<MenuCardEntry>()>;
++        // A card tab. Changes are saved at once, except those of `confirm_config_id` (Apply, as on its own page).
++        void create_card_tab(const std::string &name, const std::string &id, MenuCardList entries,
++                             const std::string &confirm_config_id = "");
++        MenuCardEntry option_card(const std::string &config_id, const std::string &option_id);
++        std::vector<MenuCardEntry> config_cards(const std::string &config_id);   // all options of a config
++        MenuCardEntry header_card(const std::string &label);
++        // The menu's accent = the game's colour from its start screen (Android): sets the theme's Primary family.
++        void set_menu_accent(uint8_t r, uint8_t g, uint8_t b);
++        // The app's Java menu pages (TouchControls' bridge* methods): set the class once ("a/b/TouchControls").
++        void set_java_menu_class(const std::string &class_name);
++        std::vector<MenuCardEntry> java_menu_cards(const std::string &page_id);
++        MenuCardEntry bindings_card();      // "Button mapping ›": the controls page (bindings) as a sub-page
++        void save_controls_config();        // the bindings (on closing a card tab)
++        std::vector<MenuCardEntry> mods_cards();
++        // B on the open card tab: 1 done (let go of a value / left a sub-page), 0 a card has the focus (the caller
++        // goes to the sections column), -1 the focus is elsewhere (the sections column: the caller closes the menu)
++        int card_back();   // Manage mods / Find mods (call create_mods_tab first, then hide its tabs)
++#endif
++
+         // Internal use only.
+         void init_modal();
+     }
+diff --git a/recompui/src/base/ui_state.cpp b/recompui/src/base/ui_state.cpp
+index f806568..6d72f04 100644
+--- a/recompui/src/base/ui_state.cpp
++++ b/recompui/src/base/ui_state.cpp
+@@ -692,6 +692,15 @@ bool check_menu_button_pressed(int profile_index, recompinput::GameInput input,
+ int cont_button_to_key(SDL_ControllerButtonEvent& button) {
+     int player1_profile = recompinput::profiles::get_input_profile_for_player(0, recompinput::InputDevice::Controller);
+ 
++#if defined(__ANDROID__)
++    // Handheld fork: B (east) is Back in the menu, as on the handhelds' own menus; X (west, the default Back) does nothing.
++    if (button.button == recompinput::SDL_CONTROLLER_BUTTON_EAST) {
++        return recompui::menu_action_mapping::back.sdl;
++    }
++    if (button.button == recompinput::SDL_CONTROLLER_BUTTON_WEST) {
++        return 0;
++    }
++#endif
+     for (const auto& mapping_pair : recompui::menu_action_mapping::rml_key_to_action) {
+         const auto& mapping = mapping_pair.second;
+ #if defined(__ANDROID__)
+@@ -791,6 +800,66 @@ static void scroll_with_right_stick(Rml::Context* context) {
+     }
+ }
+ 
++#if defined(__ANDROID__)
++// Android ports: a finger drag scrolls the menu - the scrolling box under the finger. Once the finger has moved past a
++// small threshold the touch is a drag: RmlUi gets the button released far outside (so nothing under the finger is
++// pressed), and the rest of the drag and the real release stay with the scrolling. True = the event is taken.
++static bool touch_drag_scroll(Rml::Context* context, const SDL_Event& ev) {
++    static bool down = false, dragging = false;
++    static float start_y = 0.0f, last_y = 0.0f;
++    static Rml::Element* target = nullptr;
++    if (context == nullptr) {
++        return false;
++    }
++    switch (ev.type) {
++    case SDL_EventType::SDL_MOUSEBUTTONDOWN:
++        if (ev.button.button != SDL_BUTTON_LEFT) {
++            return false;
++        }
++        down = true;
++        dragging = false;
++        start_y = last_y = static_cast<float>(ev.button.y);
++        target = context->GetElementAtPoint(Rml::Vector2f(static_cast<float>(ev.button.x), static_cast<float>(ev.button.y)));
++        while (target != nullptr && !(target->GetScrollHeight() > target->GetClientHeight() + 1.0f)) {
++            target = target->GetParentNode();
++        }
++        return false;
++    case SDL_EventType::SDL_MOUSEMOTION: {
++        if (!down || target == nullptr) {
++            return false;
++        }
++        const float y = static_cast<float>(ev.motion.y);
++        if (!dragging && std::fabs(y - start_y) > 24.0f * context->GetDensityIndependentPixelRatio()) {
++            dragging = true;
++            context->ProcessMouseMove(-10000, -10000, 0);        // away from what the finger was on ...
++            context->ProcessMouseButtonUp(0, 0);                 // ... then let go there, so it is not pressed
++        }
++        if (dragging) {
++            target->SetScrollTop(target->GetScrollTop() - (y - last_y));
++            last_y = y;
++            return true;
++        }
++        last_y = y;
++        return false;
++    }
++    case SDL_EventType::SDL_MOUSEBUTTONUP:
++        if (ev.button.button != SDL_BUTTON_LEFT) {
++            return false;
++        }
++        down = false;
++        if (dragging) {
++            dragging = false;
++            target = nullptr;
++            return true;
++        }
++        target = nullptr;
++        return false;
++    default:
++        return false;
++    }
++}
++#endif
++
+ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer* swap_chain_framebuffer) {
+ 
+     apply_background_input_mode();
+@@ -849,6 +918,11 @@ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer*
+             }
+         }
+ 
++#if defined(__ANDROID__)
++        if (!all_input_is_disabled && context_capturing_mouse && touch_drag_scroll(ui_state->context, cur_event)) {
++            continue;
++        }
++#endif
+         if (!all_input_is_disabled) {
+             bool is_mouse_input = false;
+             // Implement some additional behavior for specific events on top of what RmlUi normally does with them.
+diff --git a/recompui/src/config/ui_config.cpp b/recompui/src/config/ui_config.cpp
+index 850356d..6e09935 100644
+--- a/recompui/src/config/ui_config.cpp
++++ b/recompui/src/config/ui_config.cpp
+@@ -170,7 +170,21 @@ namespace recompui {
+                 config_modal->set_tab_visible(tab.id, false);
+             }
+         }
++#ifdef __ANDROID__
++        // the first tab shown (the configs' own tabs are hidden behind the card tabs)
++        {
++            int first = 0;
++            for (size_t i = 0; i < pending_tabs.size(); i++) {
++                if (!pending_tabs[i].hidden) {
++                    first = static_cast<int>(i);
++                    break;
++                }
++            }
++            config_modal->set_selected_tab(first);
++        }
++#else
+         config_modal->set_selected_tab(0);
++#endif
+         auto header_right = config_modal->get_header()->get_right();
+         auto quit_button = config_modal->modal_root_context.create_element<IconButton>(header_right, "icons/Quit.svg", ButtonStyle::Basic);
+         quit_button->add_pressed_callback([]() {
+@@ -210,6 +224,15 @@ namespace recompui {
+             throw std::runtime_error("No tab with ID '" + id + "' has been added to the config modal.");
+         }
+ 
++#ifdef __ANDROID__
++        // a config's own tab is hidden behind its card tab ("card_" + id): the launcher's Settings / Controls / Mods
++        for (auto &tab : pending_tabs) {
++            if (tab.id == "card_" + id) {
++                config_modal->set_selected_tab(tab.id);
++                return;
++            }
++        }
++#endif
+         config_modal->set_selected_tab(id);
+     }
+ 
+diff --git a/recompui/src/config/ui_config_option.cpp b/recompui/src/config/ui_config_option.cpp
+index 86428c9..9483f03 100644
+--- a/recompui/src/config/ui_config_option.cpp
++++ b/recompui/src/config/ui_config_option.cpp
+@@ -10,9 +10,10 @@ ConfigOptionElement::ConfigOptionElement(
+     size_t option_index,
+     const recomp::config::Config *config,
+     set_option_value_t set_option_value,
+-    on_option_hover_t on_hover
++    on_option_hover_t on_hover,
++    uint32_t events
+ ) :
+-    Element(rid, parent, Events(EventType::Hover, EventType::Focus), "div", false),
++    Element(rid, parent, events, "div", false),
+     option_id(option_id),
+     option_index(option_index),
+     config(config),
+@@ -302,3 +303,277 @@ void ConfigOptionBool::update_disabled() {
+ };
+ 
+ } // namespace recompui
++
++#ifdef __ANDROID__
++namespace recompui {
++
++// MenuCards colours (graphite surfaces; the accent is the game's theme colour, theme::color::Primary)
++static const Color card_bg{ 32, 35, 42, 255 };
++static const Color card_focus_bg{ 40, 46, 60, 255 };
++static const Color pill_bg{ 22, 24, 29, 255 };
++static const Color card_text{ 238, 238, 240, 255 };
++static const Color card_arrow{ 176, 180, 190, 255 };
++static const Color track_off{ 60, 64, 74, 255 };
++static constexpr float track_w = 76.0f, track_h = 38.0f, knob_size = 28.0f, knob_gap = 5.0f;
++
++ConfigOptionCard::ConfigOptionCard(
++    ResourceId rid,
++    Element *parent,
++    std::string option_id,
++    size_t option_index,
++    const recomp::config::Config *config,
++    set_option_value_t set_option_value,
++    on_option_hover_t on_hover
++) : ConfigOptionElement(rid, parent, option_id, option_index, config, set_option_value, on_hover,
++                        Events(EventType::Hover, EventType::Focus, EventType::Click, EventType::Navigate, EventType::Enable))
++{
++    set_flex_direction(FlexDirection::Row);
++    set_align_items(AlignItems::Center);
++    set_justify_content(JustifyContent::SpaceBetween);
++    set_padding_top(12.0f);
++    set_padding_bottom(12.0f);
++    set_padding_left(28.0f);
++    set_padding_right(20.0f);
++    set_margin_bottom(12.0f);
++    set_min_height(78.0f);
++    set_border_radius(14.0f);
++    set_background_color(card_bg);
++    set_border_left_width(6.0f);
++    set_border_left_color(card_bg);
++    set_cursor(Cursor::Pointer);
++    enable_focus();
++    // left / right change the value while it is taken (A), they never leave the card sideways
++    set_nav_none(NavDirection::Left);
++    set_nav_none(NavDirection::Right);
++
++    focus_style.set_background_color(card_focus_bg);
++    focus_style.set_border_left_color(theme::color::Primary);
++    disabled_style.set_opacity(0.45f);
++    add_style(&focus_style, { focus_state });
++    add_style(&disabled_style, { disabled_state });
++
++    if (name_label != nullptr) {
++        name_label->set_margin_bottom(0.0f);
++        name_label->set_color(card_text);
++    }
++
++    ContextId context = get_current_context();
++    const recomp::config::ConfigOption &option = config->get_option(option_index);
++    if (option.type == recomp::config::ConfigOptionType::Bool) {
++        value_area = context.create_element<Element>(this, 0, "div", false);
++        value_area->set_position(Position::Relative);
++        value_area->set_flex_shrink(0.0f);
++        value_area->set_width(track_w);
++        value_area->set_height(track_h);
++        value_area->set_border_radius(track_h / 2.0f);
++        value_area->set_background_color(track_off);
++        knob = context.create_element<Element>(value_area, 0, "div", false);
++        knob->set_position(Position::Absolute);
++        knob->set_top(knob_gap);
++        knob->set_left(knob_gap);
++        knob->set_width(knob_size);
++        knob->set_height(knob_size);
++        knob->set_border_radius(knob_size / 2.0f);
++        knob->set_background_color(card_text);
++    } else {
++        value_area = context.create_element<Element>(this, 0, "div", false);
++        value_area->set_display(Display::Flex);
++        value_area->set_flex_direction(FlexDirection::Row);
++        value_area->set_align_items(AlignItems::Center);
++        value_area->set_justify_content(JustifyContent::SpaceBetween);
++        value_area->set_flex_shrink(0.0f);
++        value_area->set_width(440.0f);
++        value_area->set_height(54.0f);
++        value_area->set_padding_left(22.0f);
++        value_area->set_padding_right(22.0f);
++        value_area->set_border_radius(27.0f);
++        value_area->set_border_width(2.0f);
++        value_area->set_border_color(pill_bg);
++        value_area->set_background_color(pill_bg);
++        chevron_left = context.create_element<Label>(value_area, "‹", theme::Typography::Header3);
++        chevron_left->set_color(card_arrow);
++        value_label = context.create_element<Label>(value_area, "", theme::Typography::LabelMD);
++        value_label->set_color(theme::color::Primary);
++        chevron_right = context.create_element<Label>(value_area, "›", theme::Typography::Header3);
++        chevron_right->set_color(card_arrow);
++    }
++    update_value();
++    update_disabled();
++}
++
++std::string ConfigOptionCard::value_text() {
++    const recomp::config::ConfigOption &option = config->get_option(option_index);
++    recomp::config::ConfigValueVariant v = get_value();
++    if (option.type == recomp::config::ConfigOptionType::Enum) {
++        const auto &e = std::get<recomp::config::ConfigOptionEnum>(option.variant);
++        if (const uint32_t *u = std::get_if<uint32_t>(&v)) {
++            auto it = e.find_option_from_value(*u);
++            if (it != e.options.end()) {
++                return it->name;
++            }
++        }
++        return "";
++    }
++    if (option.type == recomp::config::ConfigOptionType::Number) {
++        const auto &n = std::get<recomp::config::ConfigOptionNumber>(option.variant);
++        double d = 0.0;
++        if (const double *p = std::get_if<double>(&v)) {
++            d = *p;
++        }
++        char buf[64];
++        snprintf(buf, sizeof buf, "%.*f%s", n.precision, d, n.percent ? "%" : "");
++        return buf;
++    }
++    if (const std::string *s = std::get_if<std::string>(&v)) {
++        return *s;
++    }
++    return "";
++}
++
++void ConfigOptionCard::step(int direction) {
++    if (get_disabled()) {
++        return;
++    }
++    const recomp::config::ConfigOption &option = config->get_option(option_index);
++    recomp::config::ConfigValueVariant v = get_value();
++    switch (option.type) {
++        case recomp::config::ConfigOptionType::Bool: {
++            const bool *b = std::get_if<bool>(&v);
++            set_option_value(option_id, !(b != nullptr && *b));
++            break;
++        }
++        case recomp::config::ConfigOptionType::Enum: {
++            const auto &e = std::get<recomp::config::ConfigOptionEnum>(option.variant);
++            const uint32_t *u = std::get_if<uint32_t>(&v);
++            int i = 0;
++            for (size_t k = 0; k < e.options.size(); k++) {
++                if (u != nullptr && e.options[k].value == *u) {
++                    i = static_cast<int>(k);
++                }
++            }
++            int n = i + direction;
++            while (n >= 0 && n < static_cast<int>(e.options.size()) && config->get_enum_option_disabled(option_index, n)) {
++                n += direction;
++            }
++            if (n < 0 || n >= static_cast<int>(e.options.size()) || n == i) {
++                return;
++            }
++            set_option_value(option_id, e.options[n].value);
++            break;
++        }
++        case recomp::config::ConfigOptionType::Number: {
++            const auto &num = std::get<recomp::config::ConfigOptionNumber>(option.variant);
++            const double *p = std::get_if<double>(&v);
++            const double cur = p != nullptr ? *p : num.default_value;
++            const double s = num.step > 0.0 ? num.step : 1.0;
++            double nv = cur + direction * s;
++            if (nv < num.min) nv = num.min;
++            if (nv > num.max) nv = num.max;
++            if (nv == cur) {
++                return;
++            }
++            set_option_value(option_id, nv);
++            break;
++        }
++        default:
++            return;
++    }
++    update_value();
++}
++
++void ConfigOptionCard::set_editing(bool enable) {
++    editing = enable;
++    if (chevron_left == nullptr) {
++        return;
++    }
++    if (enable) {
++        value_area->set_border_color(theme::color::Primary);
++        chevron_left->set_color(theme::color::Primary);
++        chevron_right->set_color(theme::color::Primary);
++    } else {
++        value_area->set_border_color(pill_bg);
++        chevron_left->set_color(card_arrow);
++        chevron_right->set_color(card_arrow);
++    }
++}
++
++void ConfigOptionCard::process_event(const Event &e) {
++    switch (e.type) {
++    case EventType::Hover:
++        if (std::get<EventHover>(e.variant).active) {
++            on_hover(option_id);
++        }
++        break;
++    case EventType::Focus: {
++        const bool active = std::get<EventFocus>(e.variant).active;
++        set_style_enabled(focus_state, active);
++        if (active) {
++            on_hover(option_id);
++            scroll_into_view();
++        } else {
++            set_editing(false);
++        }
++        break;
++    }
++    case EventType::Click: {
++        const recomp::config::ConfigOption &option = config->get_option(option_index);
++        if (get_disabled()) {
++            break;
++        }
++        focus();
++        if (option.type == recomp::config::ConfigOptionType::Bool) {
++            step(1);
++            break;
++        }
++        const EventClick &c = std::get<EventClick>(e.variant);
++        const float left = value_area->get_absolute_left();
++        const float width = value_area->get_client_width();
++        if (c.x > 0.0f && c.x >= left && width > 0.0f) {
++            // touch on the value: its left third steps back, the rest forward
++            step(c.x < left + width / 3.0f ? -1 : 1);
++        } else {
++            set_editing(!editing); // A (Return) or a tap on the name: take / release the value
++        }
++        break;
++    }
++    case EventType::Navigate:
++        if (editing) {
++            const NavDirection dir = std::get<EventNavigate>(e.variant).direction;
++            if (dir == NavDirection::Left) {
++                step(-1);
++            } else if (dir == NavDirection::Right) {
++                step(1);
++            }
++        }
++        break;
++    default:
++        break;
++    }
++}
++
++void ConfigOptionCard::update_value() {
++    if (knob != nullptr) {
++        recomp::config::ConfigValueVariant v = get_value();
++        const bool *b = std::get_if<bool>(&v);
++        const bool on = b != nullptr && *b;
++        value_area->set_background_color(on ? theme::color::Primary : theme::color::Transparent);
++        if (!on) {
++            value_area->set_background_color(track_off);
++        }
++        knob->set_left(on ? track_w - knob_gap - knob_size : knob_gap);
++    } else if (value_label != nullptr) {
++        value_label->set_text(value_text());
++    }
++}
++
++void ConfigOptionCard::update_disabled() {
++    const bool disabled = get_disabled();
++    set_style_enabled(disabled_state, disabled);
++    if (chevron_left != nullptr) {
++        chevron_left->set_display(disabled ? Display::None : Display::Block);
++        chevron_right->set_display(disabled ? Display::None : Display::Block);
++    }
++}
++
++} // namespace recompui
++#endif // __ANDROID__
+diff --git a/recompui/src/config/ui_config_option.h b/recompui/src/config/ui_config_option.h
+index 0561657..5ef9f72 100644
+--- a/recompui/src/config/ui_config_option.h
++++ b/recompui/src/config/ui_config_option.h
+@@ -35,7 +35,8 @@ namespace recompui {
+             size_t option_index,
+             const recomp::config::Config *config,
+             set_option_value_t set_option_value,
+-            on_option_hover_t on_hover
++            on_option_hover_t on_hover,
++            uint32_t events = Events(EventType::Hover, EventType::Focus)
+         );
+         virtual ~ConfigOptionElement() = default;
+         // required overrides
+@@ -129,4 +130,43 @@ public:
+     void update_disabled() override;
+ };
+ 
++
++#ifdef __ANDROID__
++// The N64 ports' Android menu (MenuCards look): one option as a card - the name on the left, the value on the right as
++// "< value >" (enum / number) or a switch (bool). The card itself takes the focus: A flips a switch or takes the value
++// for left / right (A or B ends it), Y resets it (the reset-y action of the page). Touch: tap a switch, or the left /
++// right end of a value.
++class ConfigOptionCard : public ConfigOptionElement {
++protected:
++    Element *value_area = nullptr;   // the pill or the switch's track
++    Element *knob = nullptr;         // the switch's knob
++    Label *value_label = nullptr;
++    Label *chevron_left = nullptr;
++    Label *chevron_right = nullptr;
++    Style focus_style;
++    Style disabled_style;
++    bool editing = false;
++
++    void step(int direction);
++    void set_editing(bool enable);
++    std::string value_text();
++    virtual void process_event(const Event &e) override;
++    std::string_view get_type_name() override { return "ConfigOptionCard"; }
++public:
++    ConfigOptionCard(
++        ResourceId rid,
++        Element *parent,
++        std::string option_id,
++        size_t option_index,
++        const recomp::config::Config *config,
++        set_option_value_t set_option_value,
++        on_option_hover_t on_hover
++    );
++    void update_value() override;
++    void update_disabled() override;
++    bool is_editing() const { return editing; }
++    // B while editing ends it (true = taken).
++    bool end_editing() { if (!editing) return false; set_editing(false); return true; }
++};
++#endif
+ } // namespace recompui
+diff --git a/recompui/src/config/ui_config_page_options_menu.cpp b/recompui/src/config/ui_config_page_options_menu.cpp
+index bab835d..a2c840e 100644
+--- a/recompui/src/config/ui_config_page_options_menu.cpp
++++ b/recompui/src/config/ui_config_page_options_menu.cpp
+@@ -3,6 +3,7 @@
+ #include "elements/ui_button.h"
+ #include "elements/ui_label.h"
+ #include "RmlUi/Core/Element.h"
++#include "recompui/recompui.h"
+ #include <unordered_map>
+ 
+ 
+@@ -117,10 +118,25 @@ ConfigPageOptionsMenu::ConfigPageOptionsMenu(
+     set_as_navigation_container(NavigationType::Vertical);
+ 
+     render_config_options();
++#ifdef __ANDROID__
++    // the Android menu: the list takes the whole width, the description goes under it, flush right
++    body->get_right()->set_display(Display::None);
++    body->get_left()->set_flex_basis(100.0f, Unit::Percent);
++    description_container = context.create_element<Element>(this, 0, "p", true);
++    description_container->set_typography(theme::Typography::Body);
++    description_container->set_line_height(28.0f);
++    description_container->set_padding_left(24.0f);
++    description_container->set_padding_right(32.0f);
++    description_container->set_padding_top(4.0f);
++    description_container->set_min_height(64.0f);
++    description_container->set_text_align(TextAlign::Right);
++    description_container->set_color(Color{ 152, 156, 166, 255 });
++#else
+     description_container = context.create_element<Element>(body->get_right(), 0, "p", true);
+     description_container->set_typography(theme::Typography::Body);
+     description_container->set_line_height(28.0f);
+     description_container->set_padding(8.0f);
++#endif
+     set_description_text("");
+ 
+     if (config->requires_confirmation) {
+@@ -175,13 +191,18 @@ void ConfigPageOptionsMenu::perform_option_render_updates() {
+                     break;
+                 }
+                 case ConfigOptionUpdateType::EnumDetails: {
+-                    ConfigOptionEnum *enum_element = static_cast<ConfigOptionEnum*>(element);
+-                    enum_element->update_enum_details();
++                    // (a card shows no enum details: dynamic_cast, not static_cast)
++                    if (ConfigOptionEnum *enum_element = dynamic_cast<ConfigOptionEnum*>(element)) {
++                        enum_element->update_enum_details();
++                    }
+                     break;
+                 }
+                 case ConfigOptionUpdateType::EnumDisabled: {
+-                    ConfigOptionEnum *enum_element = static_cast<ConfigOptionEnum*>(element);
+-                    enum_element->update_enum_disabled();
++                    if (ConfigOptionEnum *enum_element = dynamic_cast<ConfigOptionEnum*>(element)) {
++                        enum_element->update_enum_disabled();
++                    } else {
++                        element->update_value();
++                    }
+                     break;
+                 }
+                 case ConfigOptionUpdateType::Value: {
+@@ -287,6 +308,13 @@ void ConfigPageOptionsMenu::render_config_options() {
+             auto &config_option = schema.options[i];
+             add_option_buttons(context, body_left_scroll, config_option.id, true);
+             ConfigOptionElement *element = nullptr;
++#ifdef __ANDROID__
++            // the Android menu: enum / number / bool options as cards (ConfigOptionCard), strings as before
++            if (config_option.type != recomp::config::ConfigOptionType::String) {
++                element = context.create_element<ConfigOptionCard>(
++                    body_left_scroll, config_option.id, i, config, bound_set_option_value, bound_on_option_hover);
++            } else
++#endif
+             switch (config_option.type) {
+                 case recomp::config::ConfigOptionType::Enum: {
+                     element = context.create_element<ConfigOptionEnum>(
+@@ -358,3 +386,852 @@ void ConfigPageOptionsMenu::on_option_hover(const std::string &option_id) {
+ }
+ 
+ } // namespace recompui
++
++#ifdef __ANDROID__
++// ---------------------------------------------------------------- the Android card menu (config::create_card_tab)
++#include <SDL2/SDL_system.h>
++#include <jni.h>
++#include <android/log.h>
++#include <chrono>
++#include <map>
++
++namespace recompui {
++
++using config::MenuCardEntry;
++using config::MenuCardList;
++
++static const Color mc_card_bg{ 32, 35, 42, 255 };
++static const Color mc_card_focus_bg{ 40, 46, 60, 255 };
++static const Color mc_pill_bg{ 22, 24, 29, 255 };
++static const Color mc_text{ 238, 238, 240, 255 };
++static const Color mc_dim{ 152, 156, 166, 255 };
++static const Color mc_arrow{ 176, 180, 190, 255 };
++static const Color mc_track_off{ 60, 64, 74, 255 };
++static constexpr float mc_track_w = 76.0f, mc_track_h = 38.0f, mc_knob = 28.0f, mc_knob_gap = 5.0f;
++
++// the config whose changes wait for Apply on the open card tab (all others are saved at once)
++static std::string mc_confirm_config;
++using mc_clock = std::chrono::steady_clock;
++
++// ---- the app's Java menu pages (TouchControls' bridge* methods)
++static std::string mc_java_class;
++static mc_clock::time_point mc_java_acted{};
++
++void config::set_java_menu_class(const std::string &class_name) {
++    mc_java_class = class_name;
++}
++
++static jclass mc_java(JNIEnv *env) {
++    static jclass cls = nullptr;
++    if (cls != nullptr || mc_java_class.empty() || env == nullptr) {
++        return cls;
++    }
++    jobject activity = static_cast<jobject>(SDL_AndroidGetActivity());
++    if (activity == nullptr) {
++        return nullptr;
++    }
++    jclass act_cls = env->GetObjectClass(activity);
++    jmethodID get_loader = env->GetMethodID(act_cls, "getClassLoader", "()Ljava/lang/ClassLoader;");
++    jobject loader = env->CallObjectMethod(activity, get_loader);
++    jclass loader_cls = env->FindClass("java/lang/ClassLoader");
++    jmethodID load = env->GetMethodID(loader_cls, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
++    jstring name = env->NewStringUTF(mc_java_class.c_str());
++    jobject found = env->CallObjectMethod(loader, load, name);
++    if (env->ExceptionCheck()) {
++        env->ExceptionClear();
++        found = nullptr;
++    }
++    if (found != nullptr) {
++        cls = static_cast<jclass>(env->NewGlobalRef(found));
++        env->DeleteLocalRef(found);
++    }
++    env->DeleteLocalRef(name);
++    env->DeleteLocalRef(loader_cls);
++    env->DeleteLocalRef(loader);
++    env->DeleteLocalRef(act_cls);
++    env->DeleteLocalRef(activity);
++    return cls;
++}
++
++// { title, then per item: kind ("v" a value, "a" an action), title, value }; cached for max_age_ms
++static const std::vector<std::string> &mc_java_items(const std::string &page, int max_age_ms) {
++    static std::map<std::string, std::pair<mc_clock::time_point, std::vector<std::string>>> cache;
++    auto &slot = cache[page];
++    const auto now = mc_clock::now();
++    if (max_age_ms > 0 && !slot.second.empty() && now - slot.first < std::chrono::milliseconds(max_age_ms)) {
++        return slot.second;
++    }
++    slot.first = now;
++    slot.second.clear();
++    JNIEnv *env = static_cast<JNIEnv *>(SDL_AndroidGetJNIEnv());
++    jclass cls = mc_java(env);
++    if (cls == nullptr) {
++        return slot.second;
++    }
++    static jmethodID m = env->GetStaticMethodID(cls, "bridgeItems", "(Ljava/lang/String;)[Ljava/lang/String;");
++    jstring jid = env->NewStringUTF(page.c_str());
++    auto arr = static_cast<jobjectArray>(env->CallStaticObjectMethod(cls, m, jid));
++    if (env->ExceptionCheck()) {
++        env->ExceptionClear();
++        arr = nullptr;
++    }
++    if (arr != nullptr) {
++        const jsize n = env->GetArrayLength(arr);
++        for (jsize i = 0; i < n; i++) {
++            auto js = static_cast<jstring>(env->GetObjectArrayElement(arr, i));
++            const char *c = js ? env->GetStringUTFChars(js, nullptr) : nullptr;
++            slot.second.emplace_back(c ? c : "");
++            if (c) env->ReleaseStringUTFChars(js, c);
++            if (js) env->DeleteLocalRef(js);
++        }
++        env->DeleteLocalRef(arr);
++    }
++    env->DeleteLocalRef(jid);
++    return slot.second;
++}
++
++static void mc_java_act(const std::string &page, int index, int op) {
++    JNIEnv *env = static_cast<JNIEnv *>(SDL_AndroidGetJNIEnv());
++    jclass cls = mc_java(env);
++    if (cls == nullptr) {
++        return;
++    }
++    static jmethodID m = env->GetStaticMethodID(cls, "bridgeAct", "(Ljava/lang/String;II)V");
++    jstring jid = env->NewStringUTF(page.c_str());
++    env->CallStaticVoidMethod(cls, m, jid, index, op);
++    if (env->ExceptionCheck()) {
++        env->ExceptionClear();
++    }
++    env->DeleteLocalRef(jid);
++    mc_java_acted = mc_clock::now();
++}
++
++static std::string mc_java_take_pushed() {
++    JNIEnv *env = static_cast<JNIEnv *>(SDL_AndroidGetJNIEnv());
++    jclass cls = mc_java(env);
++    if (cls == nullptr) {
++        return "";
++    }
++    static jmethodID m = env->GetStaticMethodID(cls, "bridgeTakePushed", "()Ljava/lang/String;");
++    auto js = static_cast<jstring>(env->CallStaticObjectMethod(cls, m));
++    if (env->ExceptionCheck()) {
++        env->ExceptionClear();
++        return "";
++    }
++    std::string r;
++    if (js != nullptr) {
++        const char *c = env->GetStringUTFChars(js, nullptr);
++        r = c ? c : "";
++        env->ReleaseStringUTFChars(js, c);
++        env->DeleteLocalRef(js);
++    }
++    return r;
++}
++
++static bool mc_java_take_close() {
++    JNIEnv *env = static_cast<JNIEnv *>(SDL_AndroidGetJNIEnv());
++    jclass cls = mc_java(env);
++    if (cls == nullptr) {
++        return false;
++    }
++    static jmethodID m = env->GetStaticMethodID(cls, "bridgeTakeClose", "()Z");
++    const bool r = env->CallStaticBooleanMethod(cls, m);
++    if (env->ExceptionCheck()) {
++        env->ExceptionClear();
++        return false;
++    }
++    return r;
++}
++
++std::vector<MenuCardEntry> config::java_menu_cards(const std::string &page) {
++    std::vector<MenuCardEntry> out;
++    const std::vector<std::string> items = mc_java_items(page, 0);
++    for (size_t i = 0; 1 + 3 * i + 2 < items.size(); i++) {
++        const int index = static_cast<int>(i);
++        MenuCardEntry e;
++        e.label = items[2 + 3 * i];
++        // the Java menu marks its links with "  ›": the card shows its own
++        const std::string link = "›";
++        if (e.label.size() >= link.size() && e.label.compare(e.label.size() - link.size(), link.size(), link) == 0) {
++            e.label.erase(e.label.size() - link.size());
++            while (!e.label.empty() && e.label.back() == ' ') e.label.pop_back();
++        }
++        const std::string &kind = items[1 + 3 * i];
++        if (kind == "v" || kind == "s") {
++            e.is_switch = kind == "s";
++            e.value = [page, index]() {
++                const auto &now = mc_java_items(page, 200);
++                const size_t k = 3 + 3 * static_cast<size_t>(index);
++                return k < now.size() ? now[k] : std::string();
++            };
++            e.step = [page, index](int d) { mc_java_act(page, index, d); };
++            e.reset = [page, index]() { mc_java_act(page, index, 2); };
++        } else {
++            e.run = [page, index]() { mc_java_act(page, index, 0); };
++        }
++        out.push_back(std::move(e));
++    }
++    return out;
++}
++
++void config::set_menu_accent(uint8_t r, uint8_t g, uint8_t b) {
++    auto mix = [](uint8_t c, uint8_t to, float t) { return static_cast<uint8_t>(c + (to - c) * t); };
++    theme::set_theme_color(theme::color::Primary, Color{ r, g, b, 255 });
++    theme::set_theme_color(theme::color::PrimaryL, Color{ mix(r, 255, 0.6f), mix(g, 255, 0.6f), mix(b, 255, 0.6f), 255 });
++    theme::set_theme_color(theme::color::PrimaryD, Color{ mix(r, 0, 0.55f), mix(g, 0, 0.55f), mix(b, 0, 0.55f), 255 });
++    theme::set_theme_color(theme::color::PrimaryA5, Color{ r, g, b, 13 });
++    theme::set_theme_color(theme::color::PrimaryA20, Color{ r, g, b, 51 });
++    theme::set_theme_color(theme::color::PrimaryA30, Color{ r, g, b, 77 });
++    theme::set_theme_color(theme::color::PrimaryA50, Color{ r, g, b, 128 });
++    theme::set_theme_color(theme::color::PrimaryA80, Color{ r, g, b, 204 });
++}
++
++// ---- config options as cards
++MenuCardEntry config::header_card(const std::string &label) {
++    MenuCardEntry e;
++    e.label = label;
++    e.header = true;
++    return e;
++}
++
++static size_t mc_option_index(const recomp::config::Config &c, const std::string &option_id) {
++    auto schema = c.get_config_schema();
++    for (size_t i = 0; i < schema.options.size(); i++) {
++        if (schema.options[i].id == option_id) {
++            return i;
++        }
++    }
++    return SIZE_MAX;
++}
++
++MenuCardEntry config::option_card(const std::string &config_id, const std::string &option_id) {
++    MenuCardEntry e;
++    recomp::config::Config *c = &config::get_config(config_id);
++    const size_t index = mc_option_index(*c, option_id);
++    if (index == SIZE_MAX) {
++        e.hidden = []() { return true; };
++        return e;
++    }
++    const recomp::config::ConfigOption &option = c->get_option(index);
++    e.label = option.name;
++    e.description = option.description;
++    e.config_id = config_id;
++    if (option.type == recomp::config::ConfigOptionType::String) {
++        // text (e.g. cheat codes): the value shortened on the card, the text field on its own page
++        e.value = [c, option_id]() {
++            recomp::config::ConfigValueVariant v = c->requires_confirmation ? c->get_temp_option_value(option_id)
++                                                                            : c->get_option_value(option_id);
++            const std::string *t = std::get_if<std::string>(&v);
++            if (t == nullptr || t->empty()) return std::string("(empty)");
++            return t->size() > 28 ? t->substr(0, 28) + "..." : *t;
++        };
++        e.sub_page = [c, index, option_id, config_id](ContextId context, Element *parent) {
++            context.create_element<ConfigOptionString>(parent, option_id, index, c,
++                [c, config_id](const std::string &id, recomp::config::ConfigValueVariant v) {
++                    c->set_option_value(id, v);
++                    if (config_id != mc_confirm_config) c->save_config();
++                },
++                [](const std::string &) {});
++        };
++        e.hidden = [c, index]() { return c->is_config_option_hidden(index); };
++        e.disabled = [c, index]() { return c->is_config_option_disabled(index); };
++        return e;
++    }
++    auto get = [c, option_id]() {
++        return c->requires_confirmation ? c->get_temp_option_value(option_id) : c->get_option_value(option_id);
++    };
++    auto set = [c, option_id, config_id](recomp::config::ConfigValueVariant v) {
++        c->set_option_value(option_id, v);
++        if (config_id != mc_confirm_config) {
++            c->save_config();
++        }
++    };
++    e.value = [c, index, get]() -> std::string {
++        const recomp::config::ConfigOption &o = c->get_option(index);
++        recomp::config::ConfigValueVariant v = get();
++        if (const auto *en = std::get_if<recomp::config::ConfigOptionEnum>(&o.variant)) {
++            if (const uint32_t *u = std::get_if<uint32_t>(&v)) {
++                auto it = en->find_option_from_value(*u);
++                if (it != en->options.end()) return it->name;
++            }
++            return "";
++        }
++        if (const auto *n = std::get_if<recomp::config::ConfigOptionNumber>(&o.variant)) {
++            const double *d = std::get_if<double>(&v);
++            char buf[64];
++            snprintf(buf, sizeof buf, "%.*f%s", n->precision, d ? *d : 0.0, n->percent ? "%" : "");
++            return buf;
++        }
++        if (std::holds_alternative<recomp::config::ConfigOptionBool>(o.variant)) {
++            const bool *b = std::get_if<bool>(&v);
++            return b != nullptr && *b ? "On" : "Off";
++        }
++        if (const std::string *s = std::get_if<std::string>(&v)) return *s;
++        return "";
++    };
++    e.step = [c, index, get, set](int dir) {
++        const recomp::config::ConfigOption &o = c->get_option(index);
++        recomp::config::ConfigValueVariant v = get();
++        if (const auto *en = std::get_if<recomp::config::ConfigOptionEnum>(&o.variant)) {
++            const uint32_t *u = std::get_if<uint32_t>(&v);
++            int i = 0;
++            for (size_t k = 0; k < en->options.size(); k++) {
++                if (u != nullptr && en->options[k].value == *u) i = static_cast<int>(k);
++            }
++            int n = i + dir;
++            while (n >= 0 && n < static_cast<int>(en->options.size()) && c->get_enum_option_disabled(index, n)) n += dir;
++            if (n >= 0 && n < static_cast<int>(en->options.size()) && n != i) set(en->options[n].value);
++        } else if (const auto *num = std::get_if<recomp::config::ConfigOptionNumber>(&o.variant)) {
++            const double *p = std::get_if<double>(&v);
++            const double cur = p != nullptr ? *p : num->default_value;
++            double nv = cur + dir * (num->step > 0.0 ? num->step : 1.0);
++            nv = std::min(std::max(nv, num->min), num->max);
++            if (nv != cur) set(nv);
++        } else if (std::holds_alternative<recomp::config::ConfigOptionBool>(o.variant)) {
++            const bool *b = std::get_if<bool>(&v);
++            set(!(b != nullptr && *b));
++        }
++    };
++    e.reset = [c, index, set]() {
++        const recomp::config::ConfigOption &o = c->get_option(index);
++        if (const auto *en = std::get_if<recomp::config::ConfigOptionEnum>(&o.variant)) set(en->default_value);
++        else if (const auto *n = std::get_if<recomp::config::ConfigOptionNumber>(&o.variant)) set(n->default_value);
++        else if (const auto *b = std::get_if<recomp::config::ConfigOptionBool>(&o.variant)) set(b->default_value);
++    };
++    if (std::holds_alternative<recomp::config::ConfigOptionBool>(option.variant)) {
++        e.is_switch = true;
++    } else if (const auto *en = std::get_if<recomp::config::ConfigOptionEnum>(&option.variant)) {
++        e.is_switch = en->options.size() == 2 && (en->options[0].name == "Off" || en->options[0].name == "On");
++    }
++    e.hidden = [c, index]() { return c->is_config_option_hidden(index); };
++    e.disabled = [c, index]() { return c->is_config_option_disabled(index); };
++    return e;
++}
++
++std::vector<MenuCardEntry> config::config_cards(const std::string &config_id) {
++    std::vector<MenuCardEntry> out;
++    auto schema = config::get_config(config_id).get_config_schema();
++    // an option's own buttons (config::add_option_button) as cards before / after it: nothing of the page is lost
++    auto buttons = [&out](const std::string &option_id, bool before) {
++        const std::vector<OptionButton> *list = config::get_option_buttons(option_id);
++        if (list == nullptr) return;
++        for (const OptionButton &b : *list) {
++            if (b.before != before) continue;
++            MenuCardEntry e;
++            e.label = b.label;
++            while (!e.label.empty() && e.label.back() == '.') e.label.pop_back();
++            e.run = b.callback;
++            e.value = b.value;
++            e.reset = b.reset;
++            out.push_back(std::move(e));
++        }
++    };
++    for (auto &o : schema.options) {
++        buttons(o.id, true);
++        out.push_back(option_card(config_id, o.id));
++        buttons(o.id, false);
++    }
++    return out;
++}
++
++// ---- the page
++class MenuCardPage;
++static MenuCardPage *mc_open_page = nullptr;
++class MenuCard;
++static MenuCard *mc_focused_card = nullptr;
++static bool mc_editing = false;   // a value is taken: the hints change
++
++class MenuCard : public Element {
++public:
++    MenuCardEntry entry;
++    MenuCardPage *page;
++    Element *right = nullptr, *track = nullptr, *knob = nullptr, *pill = nullptr;
++    Label *value_label = nullptr, *readout = nullptr, *chev_l = nullptr, *chev_r = nullptr;
++    Style focus_style, disabled_style;
++    bool editing = false;
++    std::string shown = "\x01";
++    MenuCard(ResourceId rid, Element *parent, MenuCardEntry e, MenuCardPage *page);
++    ~MenuCard() override;
++    void refresh();
++    void set_editing(bool on);
++    void step(int d);
++    bool is_link() const { return entry.sub_entries || entry.sub_page; }
++    bool is_pill() const { return entry.value && entry.step && !entry.run; }
++protected:
++    void process_event(const Event &e) override;
++    std::string_view get_type_name() override { return "MenuCard"; }
++};
++
++class MenuCardPage : public ConfigPage {
++public:
++    struct Level {
++        std::string title;
++        MenuCardList list;
++        std::function<void(ContextId, Element *)> page;
++        int focus = 0;
++    };
++    std::vector<Level> levels;
++    std::vector<MenuCard *> cards;
++    Element *description = nullptr;
++    Element *hints = nullptr;
++    bool hints_editing = false;
++    Button *apply_button = nullptr;
++    std::string confirm_config;
++    // done on the next update (never while the card that asked is handling its event)
++    std::vector<Level> push_next;
++    bool pop_next = false, rebuild_next = false;
++    mc_clock::time_point rebuild_at{};
++
++    MenuCardPage(ResourceId rid, Element *parent, MenuCardList list, std::string confirm)
++        : ConfigPage(rid, parent, Events(EventType::Update)), confirm_config(std::move(confirm)) {
++        set_as_navigation_container(NavigationType::Vertical);
++        mc_confirm_config = confirm_config;
++        ContextId context = get_current_context();
++        description = context.create_element<Element>(this, 0, "p", true);
++        description->set_typography(theme::Typography::Body);
++        description->set_line_height(28.0f);
++        description->set_padding_left(24.0f);
++        description->set_padding_right(32.0f);
++        description->set_padding_top(4.0f);
++        description->set_min_height(64.0f);
++        description->set_text_align(TextAlign::Right);
++        description->set_color(mc_dim);
++        // the hints, flush right in two rows - the same keys and words as in all N64 ports' menus
++        hints = context.create_element<Element>(this, 0, "div", false);
++        hints->set_display(Display::Flex);
++        hints->set_flex_direction(FlexDirection::Column);
++        hints->set_align_items(AlignItems::FlexEnd);
++        hints->set_padding_right(32.0f);
++        hints->set_padding_bottom(12.0f);
++        hints->set_gap(8.0f);
++        render_hints();
++        if (!confirm_config.empty()) {
++            add_footer();
++            footer->set_as_navigation_container(NavigationType::Horizontal);
++            apply_button = context.create_element<Button>(footer->get_right(), "Apply", ButtonStyle::Secondary);
++            apply_button->set_enabled(false);
++            std::string id = confirm_config;
++            apply_button->add_pressed_callback([this, id]() {
++                config::get_config(id).save_config();
++                apply_button->set_enabled(config::get_config(id).is_dirty());
++            });
++        }
++        levels.push_back(Level{ "", std::move(list), nullptr, 0 });
++        render();
++        queue_update();
++        mc_open_page = this;
++    }
++    ~MenuCardPage() override {
++        if (mc_open_page == this) mc_open_page = nullptr;
++    }
++    bool back();
++
++    void render_hints() {
++        ContextId context = get_current_context();
++        hints->clear_children();
++        hints_editing = mc_editing;
++        static const char *const keys_list[2][2] = { { "A", "B" }, { "Y", "L / R" } };
++        static const char *const words_list[2][2] = { { "Select", "Back" }, { "Default", "Section" } };
++        static const char *const keys_edit[2][2] = { { "D-Pad", "A" }, { "Y", "B" } };
++        static const char *const words_edit[2][2] = { { "Change", "Done" }, { "Default", "Done" } };
++        for (int r = 0; r < 2; r++) {
++            Element *row = context.create_element<Element>(hints, 0, "div", false);
++            row->set_display(Display::Flex);
++            row->set_flex_direction(FlexDirection::Row);
++            row->set_align_items(AlignItems::Center);
++            row->set_gap(14.0f);
++            for (int k = 0; k < 2; k++) {
++                Label *key = context.create_element<Label>(row, (mc_editing ? keys_edit : keys_list)[r][k], theme::Typography::LabelSM);
++                key->set_color(mc_text);
++                key->set_background_color(Color{ 46, 50, 60, 255 });
++                key->set_border_radius(8.0f);
++                key->set_padding_left(10.0f);
++                key->set_padding_right(10.0f);
++                key->set_padding_top(3.0f);
++                key->set_padding_bottom(3.0f);
++                Label *word = context.create_element<Label>(row, (mc_editing ? words_edit : words_list)[r][k], theme::Typography::LabelSM);
++                word->set_color(mc_dim);
++                word->set_margin_right(k == 0 ? 18.0f : 0.0f);
++            }
++        }
++    }
++
++    void describe(const std::string &text) {
++        description->set_text_unsafe(text);
++    }
++
++    void push(const MenuCardEntry &e) {
++        push_next.push_back(Level{ e.label, e.sub_entries, e.sub_page, 0 });
++    }
++    void pop() { pop_next = true; }
++    void acted() { rebuild_at = mc_clock::now() + std::chrono::milliseconds(250); }
++
++    int focused_index() {
++        for (size_t i = 0; i < cards.size(); i++) {
++            if (cards[i]->is_style_enabled(focus_state)) return static_cast<int>(i);
++        }
++        return -1;
++    }
++
++    void render() {
++        ContextId context = get_current_context();
++        Element *left = get_body()->get_left();
++        left->clear_children();
++        cards.clear();
++        left->set_padding(0.0f);
++        left->set_display(Display::Block);
++        left->set_position(Position::Relative);
++        left->set_height(100.0f, Unit::Percent);
++        Level &level = levels.back();
++        if (level.page) {
++            // a page of its own (the bindings): "‹ Back" over it, the page fills the rest
++            left->set_display(Display::Flex);
++            left->set_flex_direction(FlexDirection::Column);
++            left->set_as_navigation_container(NavigationType::Vertical);
++            MenuCardEntry back;
++            back.label = "\u2039  Back";
++            back.run = [this]() { pop(); };
++            cards.push_back(context.create_element<MenuCard>(left, std::move(back), this));
++            cards.back()->set_margin_left(16.0f);
++            cards.back()->set_margin_right(16.0f);
++            cards.back()->set_margin_top(16.0f);
++            Element *own = context.create_element<Element>(left, 0, "div", false);
++            own->set_flex_grow(1.0f);
++            own->set_flex_shrink(1.0f);
++            own->set_min_height(0.0f);
++            own->set_width(100.0f, Unit::Percent);
++            own->set_display(Display::Flex);
++            own->set_flex_direction(FlexDirection::Column);
++            level.page(context, own);
++            cards.back()->focus();
++            describe("");
++            return;
++        }
++        Element *scroll = context.create_element<Element>(left, 0, "div", false);
++        scroll->set_display(Display::Block);
++        scroll->set_width(100.0f, Unit::Percent);
++        scroll->set_min_height(100.0f, Unit::Percent);
++        scroll->set_max_height(100.0f, Unit::Percent);
++        scroll->set_padding(16.0f);
++        scroll->set_overflow_y(Overflow::Auto);
++        scroll->set_as_navigation_container(NavigationType::Vertical);
++        std::vector<MenuCardEntry> entries;
++        if (levels.size() > 1) {
++            MenuCardEntry back;
++            back.label = "‹  Back";
++            back.run = [this]() { pop(); };
++            entries.push_back(std::move(back));
++            entries.push_back(config::header_card(level.title));
++        }
++        if (level.list) {
++            for (auto &e : level.list()) entries.push_back(std::move(e));
++        }
++        for (auto &e : entries) {
++            if (e.header) {
++                Label *h = context.create_element<Label>(scroll, e.label, theme::Typography::LabelSM);
++                h->set_color(theme::color::Primary);
++                h->set_margin_top(cards.empty() ? 4.0f : 28.0f);
++                h->set_margin_bottom(12.0f);
++                h->set_margin_left(8.0f);
++                continue;
++            }
++            cards.push_back(context.create_element<MenuCard>(scroll, std::move(e), this));
++        }
++        for (MenuCard *c : cards) c->refresh();
++        const int f = std::min(level.focus, static_cast<int>(cards.size()) - 1);
++        if (f >= 0) cards[f]->focus();
++        describe("");
++    }
++
++protected:
++    std::string_view get_type_name() override { return "MenuCardPage"; }
++    void process_event(const Event &e) override {
++        if (e.type != EventType::Update) return;
++        queue_update();
++        const auto now = mc_clock::now();
++        if (now - mc_java_acted < std::chrono::seconds(2)) {
++            if (mc_java_take_close()) {
++                config::close();
++                return;
++            }
++            std::string pushed = mc_java_take_pushed();
++            if (!pushed.empty()) {
++                const auto items = mc_java_items(pushed, 0);
++                MenuCardEntry e2;
++                e2.label = items.empty() ? std::string() : items[0];
++                e2.sub_entries = [pushed]() { return config::java_menu_cards(pushed); };
++                push(e2);
++            }
++        }
++        if (pop_next || !push_next.empty() || (rebuild_at != mc_clock::time_point{} && now >= rebuild_at)) {
++            levels.back().focus = std::max(0, focused_index());
++            if (pop_next && levels.size() > 1) levels.pop_back();
++            for (auto &l : push_next) levels.push_back(std::move(l));
++            pop_next = false;
++            push_next.clear();
++            rebuild_at = {};
++            render();
++        }
++        for (MenuCard *c : cards) c->refresh();
++        if (hints_editing != mc_editing) render_hints();
++        if (apply_button != nullptr) {
++            const bool dirty = config::get_config(confirm_config).is_dirty();
++            if (apply_button->is_enabled() != dirty) apply_button->set_enabled(dirty);
++        }
++    }
++};
++
++MenuCard::MenuCard(ResourceId rid, Element *parent, MenuCardEntry e, MenuCardPage *page)
++    : Element(rid, parent, Events(EventType::Hover, EventType::Focus, EventType::Click, EventType::Navigate), "div", false),
++      entry(std::move(e)), page(page) {
++    set_display(Display::Flex);
++    set_flex_direction(FlexDirection::Row);
++    set_align_items(AlignItems::Center);
++    set_justify_content(JustifyContent::SpaceBetween);
++    set_padding_top(12.0f);
++    set_padding_bottom(12.0f);
++    set_padding_left(28.0f);
++    set_padding_right(20.0f);
++    set_margin_bottom(12.0f);
++    set_min_height(78.0f);
++    set_border_radius(14.0f);
++    set_background_color(mc_card_bg);
++    set_border_left_width(6.0f);
++    set_border_left_color(mc_card_bg);
++    set_cursor(Cursor::Pointer);
++    enable_focus();
++    set_nav_none(NavDirection::Left);
++    set_nav_none(NavDirection::Right);
++    focus_style.set_background_color(mc_card_focus_bg);
++    focus_style.set_border_left_color(theme::color::Primary);
++    disabled_style.set_opacity(0.45f);
++    add_style(&focus_style, { focus_state });
++    add_style(&disabled_style, { disabled_state });
++    if (entry.reset) {
++        set_reset_action(this, entry.reset);
++    }
++
++    ContextId context = get_current_context();
++    Label *name = context.create_element<Label>(this, entry.label, theme::Typography::LabelMD);
++    name->set_color(mc_text);
++    right = context.create_element<Element>(this, 0, "div", false);
++    right->set_display(Display::Flex);
++    right->set_flex_direction(FlexDirection::Row);
++    right->set_align_items(AlignItems::Center);
++    right->set_flex_shrink(0.0f);
++    if (is_pill()) {
++        // a switch (On / Off) or a pill ‹ value ›, whichever the value is
++        track = context.create_element<Element>(right, 0, "div", false);
++        track->set_position(Position::Relative);
++        track->set_width(mc_track_w);
++        track->set_height(mc_track_h);
++        track->set_border_radius(mc_track_h / 2.0f);
++        track->set_background_color(mc_track_off);
++        knob = context.create_element<Element>(track, 0, "div", false);
++        knob->set_position(Position::Absolute);
++        knob->set_top(mc_knob_gap);
++        knob->set_left(mc_knob_gap);
++        knob->set_width(mc_knob);
++        knob->set_height(mc_knob);
++        knob->set_border_radius(mc_knob / 2.0f);
++        knob->set_background_color(mc_text);
++        pill = context.create_element<Element>(right, 0, "div", false);
++        pill->set_display(Display::Flex);
++        pill->set_flex_direction(FlexDirection::Row);
++        pill->set_align_items(AlignItems::Center);
++        pill->set_justify_content(JustifyContent::SpaceBetween);
++        pill->set_width(440.0f);
++        pill->set_height(54.0f);
++        pill->set_padding_left(22.0f);
++        pill->set_padding_right(22.0f);
++        pill->set_border_radius(27.0f);
++        pill->set_border_width(2.0f);
++        pill->set_border_color(mc_pill_bg);
++        pill->set_background_color(mc_pill_bg);
++        chev_l = context.create_element<Label>(pill, "‹", theme::Typography::Header3);
++        chev_l->set_color(mc_arrow);
++        value_label = context.create_element<Label>(pill, "", theme::Typography::LabelMD);
++        value_label->set_color(theme::color::Primary);
++        chev_r = context.create_element<Label>(pill, "›", theme::Typography::Header3);
++        chev_r->set_color(mc_arrow);
++    } else {
++        if (entry.value) {
++            readout = context.create_element<Label>(right, "", theme::Typography::LabelMD);
++            readout->set_color(mc_dim);
++            readout->set_margin_right(20.0f);
++        }
++        if (is_link() || (!entry.run && !entry.value)) {
++            Label *arrow = context.create_element<Label>(right, "›", theme::Typography::Header3);
++            arrow->set_color(mc_arrow);
++            arrow->set_margin_right(12.0f);
++        }
++    }
++}
++
++MenuCard::~MenuCard() {
++    if (mc_focused_card == this) mc_focused_card = nullptr;
++    if (editing) mc_editing = false;
++}
++
++void MenuCard::refresh() {
++    const bool hidden = entry.hidden && entry.hidden();
++    set_display(hidden ? Display::None : Display::Flex);
++    if (hidden) return;
++    set_style_enabled(disabled_state, entry.disabled && entry.disabled());
++    if (!entry.value) return;
++    std::string v = entry.value();
++    if (v == shown) return;
++    shown = v;
++    if (readout != nullptr) {
++        readout->set_text(v);
++    } else if (pill != nullptr) {
++        const bool sw = entry.is_switch;
++        track->set_display(sw ? Display::Block : Display::None);
++        pill->set_display(sw ? Display::None : Display::Flex);
++        if (sw) {
++            const bool on = v == "On" || v == "shown";
++            track->set_background_color(on ? Color{} : mc_track_off);
++            if (on) track->set_background_color(theme::color::Primary);
++            knob->set_left(on ? mc_track_w - mc_knob_gap - mc_knob : mc_knob_gap);
++        } else {
++            value_label->set_text(v);
++        }
++    }
++}
++
++void MenuCard::set_editing(bool on) {
++    editing = on;
++    mc_editing = on;
++    if (pill == nullptr) return;
++    pill->set_border_color(on ? Color{} : mc_pill_bg);
++    if (on) pill->set_border_color(theme::color::Primary);
++    if (on) {
++        chev_l->set_color(theme::color::Primary);
++        chev_r->set_color(theme::color::Primary);
++    } else {
++        chev_l->set_color(mc_arrow);
++        chev_r->set_color(mc_arrow);
++    }
++}
++
++void MenuCard::step(int d) {
++    if (entry.step) {
++        entry.step(d);
++        refresh();
++        page->acted();
++    }
++}
++
++void MenuCard::process_event(const Event &e) {
++    const bool disabled = entry.disabled && entry.disabled();
++    switch (e.type) {
++    case EventType::Hover:
++        if (std::get<EventHover>(e.variant).active) page->describe(entry.description);
++        break;
++    case EventType::Focus: {
++        const bool active = std::get<EventFocus>(e.variant).active;
++        set_style_enabled(focus_state, active);
++        if (active) {
++            mc_focused_card = this;
++        } else if (mc_focused_card == this) {
++            mc_focused_card = nullptr;
++        }
++        if (active) {
++            page->describe(entry.description);
++            scroll_into_view();
++        } else {
++            set_editing(false);
++        }
++        break;
++    }
++    case EventType::Click: {
++        if (disabled) break;
++        focus();
++        if (is_link()) {
++            page->push(entry);
++        } else if (entry.run) {
++            entry.run();
++            page->acted();
++        } else if (is_pill()) {
++            if (entry.is_switch) {
++                step(1);
++                break;
++            }
++            const EventClick &c = std::get<EventClick>(e.variant);
++            const float left = pill->get_absolute_left();
++            const float width = pill->get_client_width();
++            if (c.x > 0.0f && c.x >= left && width > 0.0f) {
++                step(c.x < left + width / 3.0f ? -1 : 1);   // a tap on the value: left third back, the rest on
++            } else {
++                set_editing(!editing);                       // A or a tap on the name: take / let go of the value
++            }
++        }
++        break;
++    }
++    case EventType::Navigate:
++        if (editing && !disabled) {
++            const NavDirection dir = std::get<EventNavigate>(e.variant).direction;
++            if (dir == NavDirection::Left) step(-1);
++            else if (dir == NavDirection::Right) step(1);
++        }
++        break;
++    default:
++        break;
++    }
++}
++
++bool MenuCardPage::back() {
++    for (MenuCard *c : cards) {
++        if (c->editing) {
++            c->set_editing(false);
++            return true;
++        }
++    }
++    if (levels.size() > 1 && !pop_next) {
++        pop();
++        return true;
++    }
++    return false;
++}
++
++int config::card_back() {
++    if (mc_open_page != nullptr && mc_open_page->back()) return 1;
++    return mc_focused_card != nullptr ? 0 : -1;
++}
++
++void config::create_card_tab(const std::string &name, const std::string &id, MenuCardList entries,
++                             const std::string &confirm_config_id) {
++    config::create_tab(
++        name,
++        id,
++        [entries, confirm_config_id, id](ContextId context, Element *parent) {
++            try {
++                context.create_element<MenuCardPage>(parent, entries, confirm_config_id);
++            } catch (const std::exception &ex) {
++                __android_log_print(ANDROID_LOG_ERROR, "recompui", "card tab %s: %s", id.c_str(), ex.what());
++            }
++        },
++        [name, confirm_config_id](TabCloseContext close_context) {
++            if (confirm_config_id.empty()) return true;
++            recomp::config::Config &c = config::get_config(confirm_config_id);
++            if (!c.is_dirty()) return true;
++            std::string cid = confirm_config_id;
++            recompui::open_choice_prompt(
++                name + " options have unapplied changes.", "Would you like to apply or discard the changes?",
++                "Apply", "Discard",
++                [cid, close_context]() {
++                    config::get_config(cid).save_config();
++                    if (close_context == TabCloseContext::ModalClose) config::close();
++                },
++                [cid, close_context]() {
++                    config::get_config(cid).revert_temp_config();
++                    if (close_context == TabCloseContext::ModalClose) config::close();
++                },
++                recompui::ButtonStyle::Success, recompui::ButtonStyle::Danger, true);
++            return false;
++        },
++        [](TabCloseContext) { config::save_controls_config(); });
++}
++
++} // namespace recompui
++#endif // __ANDROID__
+diff --git a/recompui/src/config/ui_config_tab_controls.cpp b/recompui/src/config/ui_config_tab_controls.cpp
+index fa39c46..d4c758e 100644
+--- a/recompui/src/config/ui_config_tab_controls.cpp
++++ b/recompui/src/config/ui_config_tab_controls.cpp
+@@ -22,4 +22,18 @@ void config::create_controls_tab(const std::string &name) {
+     );
+ }
+ 
++#ifdef __ANDROID__
++config::MenuCardEntry config::bindings_card() {
++    MenuCardEntry e;
++    e.label = "Button mapping";
++    e.description = "Which controller buttons and keys do what in the game.";
++    e.sub_page = [](ContextId context, Element *parent) { context.create_element<ConfigPageControls>(parent); };
++    return e;
++}
++
++void config::save_controls_config() {
++    recompinput::profiles::save_controls_config(recomp::get_config_path() / (config::controls::id + ".json"));
++}
++#endif
++
+ } // namespace recompui
+diff --git a/recompui/src/config/ui_config_tab_mods.cpp b/recompui/src/config/ui_config_tab_mods.cpp
+index 227e06d..8a26a91 100644
+--- a/recompui/src/config/ui_config_tab_mods.cpp
++++ b/recompui/src/config/ui_config_tab_mods.cpp
+@@ -4,6 +4,12 @@
+ #include "composites/ui_mod_menu.h"
+ #include "elements/ui_element.h"
+ #include "librecomp/game.hpp"
++#include "ultramodern/ultramodern.hpp"
++#include "util/file.h"
++#include <fstream>
++#if defined(__ANDROID__)
++#include "app_restart.h"
++#endif
+ 
+ namespace recompui {
+ 
+@@ -19,4 +25,28 @@ void config::create_mods_tab(const std::string &name) {
+     recompui::update_mod_list(false);
+ }
+ 
++#ifdef __ANDROID__
++// The card menu's Mods tab: Manage mods as a sub-page (this RecompFrontend has no mod downloads yet)
++std::vector<config::MenuCardEntry> config::mods_cards() {
++    std::vector<MenuCardEntry> l;
++    MenuCardEntry manage;
++    manage.label = "Manage mods";
++    manage.description = "The installed mods: turn them on or off, change their settings, install new ones.";
++    manage.sub_page = [](ContextId context, Element *parent) { context.create_element<ModMenu>(parent); };
++    l.push_back(manage);
++    if (ultramodern::is_game_started()) {
++        // mods are installed and switched before the game starts: restart to the start screen
++        MenuCardEntry restart;
++        restart.label = "Install / switch mods (restart)";
++        restart.description = "Mods can only be installed or turned on and off before the game starts. This restarts "
++                              "the app to the start screen, where Mods works fully.";
++        restart.run = []() {
++            dk64::native_request_app_restart();
++        };
++        l.push_back(restart);
++    }
++    return l;
++}
++#endif
++
+ } // namespace recompui
+diff --git a/recompui/src/elements/ui_config_page.cpp b/recompui/src/elements/ui_config_page.cpp
+index b839753..5867490 100644
+--- a/recompui/src/elements/ui_config_page.cpp
++++ b/recompui/src/elements/ui_config_page.cpp
+@@ -86,6 +86,11 @@ namespace recompui {
+ 
+         right = context.create_element<Element>(this, 0, "div", false);
+         set_config_body_side_styles(right);
++#ifdef __ANDROID__
++        // the Android menu: one column - the list over the whole width (descriptions go under it)
++        right->set_display(Display::None);
++        left->set_flex_basis(100.0f, Unit::Percent);
++#endif
+     }
+ 
+     ConfigPage::ConfigPage(ResourceId rid, Element *parent, uint32_t events_enabled) : Element(rid, parent, events_enabled, "div", false) {
+diff --git a/recompui/src/elements/ui_modal.cpp b/recompui/src/elements/ui_modal.cpp
+index 4d11577..35ba613 100644
+--- a/recompui/src/elements/ui_modal.cpp
++++ b/recompui/src/elements/ui_modal.cpp
+@@ -4,8 +4,11 @@
+ #include "recompinput/recompinput.h"
+ #include "recompinput/profiles.h"
+ 
++#include "recompui/config.h"
++
+ namespace recompui {
+ 
++
+ class ModalOverlay : public Element {
+ protected:
+     Modal *parent_modal;
+@@ -322,6 +325,17 @@ TabbedModal::TabbedModal(
+ ) : Modal(rid, parent, modal_root_context, modal_type)
+ {
+     set_menu_action_callback(MenuAction::Back, [this]() {
++#ifdef __ANDROID__
++        // B goes up one level: a taken value / a sub-page (the card page), then the sections column, then closes
++        const int card = config::card_back();
++        if (card > 0) {
++            return;
++        }
++        if (card < 0) {
++            config::close();
++            return;
++        }
++#endif
+         if (this->tabs != nullptr) {
+             this->tabs->focus_on_active_tab();
+         }
+@@ -332,15 +346,68 @@ TabbedModal::TabbedModal(
+     set_menu_action_callback(MenuAction::TabRight, [this]() {
+         this->navigate_tab_direction(1);
+     }, "Next Tab");
++#ifdef __ANDROID__
++    // the card pages show the hints themselves (A Select, B Back, Y Default, L / R Section - as in all N64 ports)
++    if (menu_actions_wrapper != nullptr) {
++        menu_actions_wrapper->set_display(Display::None);
++    }
++    // Full screen, graphite; no header row (the sections are a column on the left, Back to game / Exit are cards).
++    modal_element->set_position(Position::Absolute);
++    modal_element->set_top(0);
++    modal_element->set_right(0);
++    modal_element->set_bottom(0);
++    modal_element->set_left(0);
++    modal_element->set_max_width(100000.0f);
++    modal_element->set_border_width(0.0f);
++    modal_element->set_border_radius(0.0f);
++    modal_element->set_background_color(Color{ 18, 20, 24, 255 });
++    header->set_display(Display::None);
++
++    tab_column = modal_root_context.create_element<Element>(body);
++    tab_column->set_display(Display::Flex);
++    tab_column->set_flex_direction(FlexDirection::Column);
++    tab_column->set_width(27.0f, Unit::Percent);
++    tab_column->set_flex_shrink(0.0f);
++    tab_column->set_padding_top(28.0f);
++    tab_column->set_padding_left(40.0f);
++    tab_column->set_padding_right(24.0f);
++    tab_column->set_overflow_y(Overflow::Auto);
++    Label *title = modal_root_context.create_element<Label>(tab_column, "Settings", theme::Typography::Header1);
++    title->set_color(Color{ 238, 238, 240, 255 });
++    title->set_padding_left(16.0f);
++    Element *bar = modal_root_context.create_element<Element>(tab_column);
++    bar->set_display(Display::Block);
++    bar->set_width(64.0f);
++    bar->set_height(5.0f);
++    bar->set_margin_left(16.0f);
++    bar->set_margin_top(6.0f);
++    bar->set_margin_bottom(24.0f);
++    bar->set_border_radius(3.0f);
++    bar->set_background_color(theme::color::Primary);
++
++    tab_body = modal_root_context.create_element<Element>(body);
++    tab_body->set_display(Display::Flex);
++    tab_body->set_flex_direction(FlexDirection::Row);
++    tab_body->set_flex_grow(1.0f);
++    tab_body->set_flex_shrink(1.0f);
++    tab_body->set_flex_basis(0.0f);
++    tab_body->set_height(100.0f, Unit::Percent);
++    body->set_as_navigation_container(NavigationType::Horizontal);
++#endif
+ }
+ 
+ void TabbedModal::process_event(const Event &e) {
+     switch (e.type) {
+         case EventType::Update: {
+             if (previous_tab_index != current_tab_index) {
+-                body->clear_children();
++#ifdef __ANDROID__
++                Element *page_parent = tab_body;
++#else
++                Element *page_parent = body;
++#endif
++                page_parent->clear_children();
+                 if (current_tab_index >= 0 && current_tab_index < tab_contexts.size()) {
+-                    tab_contexts[current_tab_index].create_contents(modal_root_context, body);
++                    tab_contexts[current_tab_index].create_contents(modal_root_context, page_parent);
+                 }
+                 previous_tab_index = current_tab_index;
+             }
+@@ -406,8 +473,14 @@ void TabbedModal::set_selected_tab(const std::string &id) {
+ void TabbedModal::initialize_tab(TabContext &tab_context) {
+     ContextId context = get_current_context();
+     if (tabs == nullptr) {
++#ifdef __ANDROID__
++        tabs = context.create_element<TabSet>(tab_column);
++        tabs->set_flex_direction(FlexDirection::Column);
++        tabs->set_as_navigation_container(NavigationType::Vertical);
++#else
+         header->set_padding_left(0.0f); // tabs hug to left side
+         tabs = context.create_element<TabSet>(header->get_left());
++#endif
+         tabs->set_change_tab_callback([this](int tab_index) {
+             this->on_tab_change(tab_index);
+         });
+diff --git a/recompui/src/elements/ui_modal.h b/recompui/src/elements/ui_modal.h
+index d065a14..f6c6a15 100644
+--- a/recompui/src/elements/ui_modal.h
++++ b/recompui/src/elements/ui_modal.h
+@@ -100,6 +100,11 @@ namespace recompui {
+     protected:
+         std::vector<TabContext> tab_contexts;
+         TabSet *tabs = nullptr;
++#ifdef __ANDROID__
++        // The N64 ports' Android menu: the sections in a column on the left, the page on the right (MenuCards look).
++        Element *tab_column = nullptr;
++        Element *tab_body = nullptr;
++#endif
+         int previous_tab_index = -1;
+         int current_tab_index = -1;
+         virtual void process_event(const Event &e) override;
+diff --git a/recompui/src/elements/ui_tab_set.cpp b/recompui/src/elements/ui_tab_set.cpp
+index 2c5dc52..dc8f92f 100644
+--- a/recompui/src/elements/ui_tab_set.cpp
++++ b/recompui/src/elements/ui_tab_set.cpp
+@@ -3,6 +3,13 @@
+ 
+ namespace recompui {
+ 
++
++#ifdef __ANDROID__
++static constexpr theme::color tab_indicator_color = theme::color::Primary; // the Android menu's accent
++#else
++static constexpr theme::color tab_indicator_color = theme::color::BorderSolid;
++#endif
++
+ Tab::Tab(ResourceId rid, Element *parent, int tab_index, std::string_view text, on_change_tab_callback on_select_tab) :
+     Element(rid, parent, Events(EventType::Click, EventType::Hover, EventType::Enable, EventType::Focus), "button", false)
+ {
+@@ -37,10 +44,23 @@ Tab::Tab(ResourceId rid, Element *parent, int tab_index, std::string_view text,
+     indicator = context.create_element<Element>(this, 0, "div", false);
+     indicator->set_display(Display::Block);
+     indicator->set_position(Position::Absolute);
++#ifdef __ANDROID__
++    // the Android menu's section column: a bar on the left edge of the active section, a faint fill behind it
++    indicator->set_width(5.0f);
++    indicator->set_top(14.0f);
++    indicator->set_bottom(14.0f);
++    indicator->set_left(0.0f);
++    indicator->set_border_radius(3.0f);
++    set_text_align(TextAlign::Left);
++    set_padding_left(28.0f);
++    set_border_radius(12.0f);
++    checked_style.set_background_color(Color{ 255, 255, 255, 12 });
++#else
+     indicator->set_height(2.0f);
+     indicator->set_bottom(2.0f);
+     indicator->set_left(0.0f);
+     indicator->set_right(0.0f);
++#endif
+     indicator->set_background_color(theme::color::Transparent);
+ 
+     add_style(&hover_style, { hover_state });
+@@ -73,7 +93,7 @@ void Tab::process_event(const Event &e) {
+     case EventType::Enable: {
+         bool active = std::get<EventEnable>(e.variant).active;
+         set_style_enabled(disabled_state, !active);
+-        indicator->set_background_color(active ? theme::color::BorderSolid : theme::color::Transparent);
++        indicator->set_background_color(active ? tab_indicator_color : theme::color::Transparent);
+         break;
+     }
+     case EventType::Focus:
+@@ -107,7 +127,7 @@ void Tab::set_selected(bool enable) {
+     is_selected = enable;
+     set_as_primary_focus(enable);
+     set_style_enabled(checked_state, enable);
+-    indicator->set_background_color(enable ? theme::color::BorderSolid : theme::color::Transparent);
++    indicator->set_background_color(enable ? tab_indicator_color : theme::color::Transparent);
+ }
+ 
+ TabSet::TabSet(ResourceId rid, Element *parent) :
+diff --git a/recompui/src/util/ui_utils.cpp b/recompui/src/util/ui_utils.cpp
+index ba41f6b..a685daf 100644
+--- a/recompui/src/util/ui_utils.cpp
++++ b/recompui/src/util/ui_utils.cpp
+@@ -17,9 +17,18 @@ recompui::Color recompui::get_pulse_color(uint32_t pulse_milliseconds) {
+     uint32_t anim_offset = millis % pulse_milliseconds;
+     
+     float factor = std::abs((2.0f * anim_offset / pulse_milliseconds) - 1.0f);
++#if defined(__ANDROID__)
++    // the Android menu: the focus pulses in the game's accent (config::set_menu_accent), like the rest of the menu
++    return lerp_color(
++        recompui::theme::get_theme_color(theme::color::Primary),
++        recompui::theme::get_theme_color(theme::color::PrimaryL),
++        factor
++    );
++#else
+     return lerp_color(
+         recompui::theme::get_theme_color(theme::color::Secondary),
+         recompui::theme::get_theme_color(theme::color::SecondaryL),
+         factor
+     );
++#endif
+ }

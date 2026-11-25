@@ -464,6 +464,73 @@ void show_android_gpu_driver_menu() {
         request_app_restart_after_delay(800);
     }
 }
+
+// Settings > Graphics (the card menu, src/main/main.cpp): the GPU driver - its name beside it, A opens the installer
+recompui::config::MenuCardEntry android_driver_card() {
+    recompui::config::MenuCardEntry e;
+    e.label = "GPU Driver (Turnip)";
+    e.description = "Installs or picks a Vulkan driver (Turnip). The app restarts to use it.";
+    // a sub-list of cards (B goes back), not the old dialog: install a .zip, or back to the system driver
+    e.sub_entries = []() {
+        static std::string last_error;
+        std::vector<recompui::config::MenuCardEntry> l;
+        const std::string status = dk64driver::status_text() + (last_error.empty() ? "" : "\n\n" + last_error);
+        recompui::config::MenuCardEntry install;
+        install.label = "Install driver (.zip)";
+        install.description = status;
+        install.run = []() {
+            androidport::filedialog::request(androidport::filedialog::Kind::DriverZip,
+                [](bool ok, const std::string &payload) {
+                    if (ok) {
+                        last_error.clear();
+                        request_app_restart_after_delay(800);   // the new driver is loaded at the next start
+                    } else {
+                        last_error = payload;
+                    }
+                });
+        };
+        l.push_back(install);
+        // the drivers installed before: pick one (the app restarts to load it)
+        const std::string current = dk64driver::selected_dir();
+        for (const auto &drv : dk64driver::installed_drivers()) {
+            recompui::config::MenuCardEntry pick;
+            pick.label = drv.name;
+            pick.description = status;
+            const bool in_use = drv.dir == current || drv.dir + "/" == current || drv.dir == current + "/";
+            if (in_use) {
+                pick.value = []() { return std::string("In use"); };
+            }
+            pick.run = [drv, in_use]() {
+                if (!in_use && dk64driver::select_installed(drv)) {
+                    request_app_restart_after_delay(800);
+                }
+            };
+            l.push_back(pick);
+        }
+        if (dk64_adrenotools_custom_driver_active() || !current.empty()) {
+            recompui::config::MenuCardEntry reset;
+            reset.label = "Use system driver";
+            reset.description = status;
+            reset.run = []() {
+                dk64driver::reset_selection();
+                request_app_restart_after_delay(800);
+            };
+            l.push_back(reset);
+        }
+        return l;
+    };
+    e.value = []() {
+        static std::string name;
+        static std::chrono::steady_clock::time_point asked;
+        const auto now = std::chrono::steady_clock::now();
+        if (name.empty() || now - asked > std::chrono::seconds(1)) {
+            name = dk64driver::active_name();
+            asked = now;
+        }
+        return name;
+    };
+    return e;
+}
 } // namespace
 #endif
 
@@ -572,6 +639,93 @@ static void find_assets_folder() {
         std::filesystem::current_path(exe_dir, ec);
     }
 }
+#ifdef __ANDROID__
+// The Android card menu (the same in all N64 ports: General, the game's own areas, Graphics, Shaders, Audio,
+// Controls, Mods). The configs stay as they are (saved settings keep their files); their own tabs are hidden.
+static void create_android_card_tabs() {
+    using namespace recompui::config;
+    set_java_menu_class("io.github.almostdrownedrat.dinotale.TouchControls");
+    set_menu_accent(115, 194, 84);   // the start screen's colour (the green hills)
+    create_card_tab("General", "card_general", []() {
+        std::vector<MenuCardEntry> l;
+        l.push_back(header_card("Session"));
+        MenuCardEntry back;
+        back.label = "Back to game";
+        back.run = []() { recompui::config::close(); };
+        l.push_back(back);
+        for (auto &e : java_menu_cards("game")) l.push_back(e);                 // Exit game
+        l.push_back(header_card("Input"));
+        l.push_back(option_card(general::id, general::options::background_input_mode));
+        return l;
+    });
+    create_card_tab("Gameplay", "card_gameplay", []() {
+        std::vector<MenuCardEntry> l;
+        l.push_back(header_card("Cheats"));
+        for (auto &e : config_cards("cheats")) l.push_back(e);
+        l.push_back(header_card("Hacks"));
+        for (auto &e : config_cards("hacks")) l.push_back(e);
+        return l;
+    });
+    create_card_tab("Graphics", "card_graphics", []() {
+        namespace go = graphics::options;
+        std::vector<MenuCardEntry> l;
+        std::vector<std::string> used;
+        auto add = [&](const std::string &id) {
+            l.push_back(option_card(graphics::id, id));
+            used.push_back(id);
+        };
+        l.push_back(header_card("Picture"));
+        add(go::res_option);
+        add(go::ar_option);
+        add(go::hr_option);
+        l.push_back(header_card("Quality"));
+        add(go::ds_option);
+        add(go::msaa_option);
+        // any other option of the graphics config (shown only where it isn't hidden)
+        auto schema = get_config(graphics::id).get_config_schema();
+        for (auto &o : schema.options) {
+            if (o.id != go::rr_option && o.id != go::rr_manual_value &&
+                std::find(used.begin(), used.end(), o.id) == used.end()) {
+                add(o.id);
+            }
+        }
+        l.push_back(header_card("Frame rate"));
+        add(go::rr_option);
+        add(go::rr_manual_value);
+        for (auto &e : java_menu_cards("display")) l.push_back(e);              // FPS
+        l.push_back(header_card("Driver"));
+        l.push_back(android_driver_card());
+        return l;
+    }, graphics::id);
+    create_card_tab("Shaders", "card_shaders", []() {
+        std::vector<MenuCardEntry> l;
+        l.push_back(header_card("RetroArch shaders"));
+        for (auto &e : java_menu_cards("shader")) l.push_back(e);
+        l.push_back(header_card("Picture"));
+        MenuCardEntry res = option_card("android_options", "shader_resolution");
+        res.hidden = nullptr;                                                     // hidden as an option of its own tab
+        l.push_back(res);
+        return l;
+    });
+    create_card_tab("Audio", "card_sound", []() {
+        std::vector<MenuCardEntry> l;
+        l.push_back(header_card("Volume"));
+        for (auto &e : config_cards(sound::id)) l.push_back(e);
+        return l;
+    });
+    create_card_tab("Controls", "card_controls", []() {
+        std::vector<MenuCardEntry> l;
+        l.push_back(header_card("Controller"));
+        l.push_back(bindings_card());
+        l.push_back(option_card(general::id, general::options::joystick_deadzone));
+        l.push_back(option_card(general::id, general::options::rumble_strength));
+        l.push_back(header_card("Touch controls"));
+        for (auto &e : java_menu_cards("touch")) l.push_back(e);
+        return l;
+    });
+}
+#endif
+
 
 int main(int argc, char** argv) {
     std::set_terminate(report_unhandled_exception_and_abort);
@@ -723,7 +877,24 @@ int main(int argc, char** argv) {
     recompui::config::create_controls_tab();
     recompui::config::create_sound_tab();
     dinotale_add_cheat_tabs();
+#ifdef __ANDROID__
+    for (const std::string &id : { recompui::config::general::id, recompui::config::graphics::id, std::string("android_options"),
+                                   recompui::config::controls::id, recompui::config::sound::id, std::string("cheats"),
+                                   std::string("hacks") }) {
+        recompui::config::set_tab_visible(id, false);
+    }
+    create_android_card_tabs();
+#endif
     recompui::config::create_mods_tab();
+#ifdef __ANDROID__
+    recompui::config::set_tab_visible(recompui::config::mods::id, false);
+    recompui::config::create_card_tab("Mods", "card_mods", []() {
+        std::vector<recompui::config::MenuCardEntry> l;
+        l.push_back(recompui::config::header_card("Mods"));
+        for (auto &e : recompui::config::mods_cards()) l.push_back(e);
+        return l;
+    });
+#endif
     recompui::config::finalize();
 
     // Settings and the ROM from the command line, now that the saved settings are loaded.
